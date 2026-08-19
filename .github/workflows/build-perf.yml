@@ -1,0 +1,66 @@
+name: Build XanMod perf
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-perf:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git \
+            build-essential \
+            flex \
+            bison \
+            pkg-config \
+            libelf-dev \
+            libdw-dev \
+            libunwind-dev \
+            libslang2-dev \
+            libperl-dev \
+            libpython3-dev \
+            libcap-dev \
+            libnuma-dev \
+            libbabeltrace-dev \
+            libtraceevent-dev \
+            libtracefs-dev \
+            libpfm4-dev \
+            libssl-dev \
+            libzstd-dev \
+            liblzma-dev \
+            libaudit-dev
+
+      - name: Clone XanMod source
+        run: |
+          git clone \
+            --depth 1 \
+            --branch 7.1.6-xanmod1 \
+            https://gitlab.com/xanmod/linux.git \
+            xanmod-linux
+
+      - name: Build perf
+        working-directory: xanmod-linux
+        run: |
+          make -C tools/perf -j"$(nproc)"
+
+      - name: Verify perf
+        working-directory: xanmod-linux
+        run: |
+          ./tools/perf/perf version
+          file ./tools/perf/perf
+
+      - name: Prepare binary
+        run: |
+          mkdir -p output
+          cp xanmod-linux/tools/perf/perf \
+            output/perf-7.1.6-x64v3-xanmod1-amd64
+
+      - name: Upload perf binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-7.1.6-x64v3-xanmod1-amd64
+          path: output/perf-7.1.6-x64v3-xanmod1-amd64
