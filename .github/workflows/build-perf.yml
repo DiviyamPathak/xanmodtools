@@ -50,7 +50,6 @@ jobs:
             libdebuginfod-dev \
             systemtap-sdt-dev \
             llvm \
-            libllvm-dev \
             libcapstone-dev
 
       - name: Clone XanMod source
