@@ -74,9 +74,6 @@ jobs:
         working-directory: xanmod-linux
         run: |
           set -euxo pipefail
-
-          # Match the standard Ubuntu linux-tools set where the
-          # corresponding userspace implementation exists in the kernel tree.
           make -C tools/perf -j"$(nproc)"
           make -C tools/bpf/bpftool -j"$(nproc)"
           make -C tools/power/cpupower -j"$(nproc)"
@@ -90,7 +87,6 @@ jobs:
         working-directory: xanmod-linux
         run: |
           set -eux
-
           ./tools/perf/perf version
           ./tools/bpf/bpftool/src/bpftool version || ./tools/bpf/bpftool/bpftool version
           ./tools/power/cpupower/cpupower --version || true
@@ -99,25 +95,18 @@ jobs:
           ./tools/tracing/rtla/rtla --help >/dev/null
           ./tools/usb/usbip/src/usbip --version || true
           ./tools/usb/usbip/src/usbipd --version || true
-          ./tools/power/acpi/acpidbg --help >/dev/null || true
 
       - name: Prepare tools tree
         run: |
           set -euxo pipefail
+          VERSION_ROOT="output/tools/${XANMOD_KERNEL}"
+          mkdir -p "${VERSION_ROOT}" output/bin
 
-          TOOLS_ROOT="output/tools"
-          VERSION_ROOT="${TOOLS_ROOT}/${XANMOD_KERNEL}"
-          mkdir -p "${VERSION_ROOT}" "output/bin"
-
-          # perf
           cp xanmod-linux/tools/perf/perf "${VERSION_ROOT}/perf"
-
-          # perf's JVM TI helper, when built.
           if [ -f xanmod-linux/tools/perf/libperf-jvmti.so ]; then
             cp xanmod-linux/tools/perf/libperf-jvmti.so "${VERSION_ROOT}/libperf-jvmti.so"
           fi
 
-          # bpftool
           if [ -f xanmod-linux/tools/bpf/bpftool/src/bpftool ]; then
             cp xanmod-linux/tools/bpf/bpftool/src/bpftool "${VERSION_ROOT}/bpftool"
           elif [ -f xanmod-linux/tools/bpf/bpftool/bpftool ]; then
@@ -127,38 +116,22 @@ jobs:
             exit 1
           fi
 
-          # cpupower
           cp xanmod-linux/tools/power/cpupower/cpupower "${VERSION_ROOT}/cpupower"
-
-          # x86 power tools
           cp xanmod-linux/tools/power/x86/turbostat/turbostat "${VERSION_ROOT}/turbostat"
           cp xanmod-linux/tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy \
             "${VERSION_ROOT}/x86_energy_perf_policy"
-
-          # RTLA
           cp xanmod-linux/tools/tracing/rtla/rtla "${VERSION_ROOT}/rtla"
-
-          # USB/IP
           cp xanmod-linux/tools/usb/usbip/src/usbip "${VERSION_ROOT}/usbip"
           cp xanmod-linux/tools/usb/usbip/src/usbipd "${VERSION_ROOT}/usbipd"
 
-          # ACPI debugger
-          if [ -f xanmod-linux/tools/power/acpi/acpidbg ]; then
-            cp xanmod-linux/tools/power/acpi/acpidbg "${VERSION_ROOT}/acpidbg"
-          fi
-
           chmod 0755 "${VERSION_ROOT}"/*
-
-          # Keep the raw binaries available as a CI artifact as well.
           cp "${VERSION_ROOT}/perf" "output/bin/perf-${XANMOD_KERNEL}-amd64"
 
       - name: Prepare Debian package
         run: |
           set -euxo pipefail
-
           PACKAGE_DIR="linux-tools-${XANMOD_KERNEL}"
           VERSION_ROOT="${PACKAGE_DIR}/usr/lib/linux-tools/${XANMOD_KERNEL}"
-
           mkdir -p "${PACKAGE_DIR}/DEBIAN" "${VERSION_ROOT}"
           cp -a "output/tools/${XANMOD_KERNEL}/." "${VERSION_ROOT}/"
 
@@ -172,35 +145,26 @@ jobs:
           Description: Linux kernel tools for XanMod ${XANMOD_VERSION}
            Version-specific Linux userspace tools built from the matching XanMod kernel source.
            Includes perf, bpftool, cpupower, turbostat, x86_energy_perf_policy,
-           rtla, USB/IP tools, and the ACPI debugger where available.
+           rtla, and USB/IP tools.
           EOF
 
-          dpkg-deb --build \
-            "${PACKAGE_DIR}" \
+          dpkg-deb --build "${PACKAGE_DIR}" \
             "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
       - name: Inspect Debian package
         run: |
-          dpkg-deb --info \
-            "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
-          dpkg-deb --contents \
-            "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
+          dpkg-deb --info "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
+          dpkg-deb --contents "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
       - name: Test Debian package
         run: |
           set -eux
-          sudo dpkg -i \
-            "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
-
+          sudo dpkg -i "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd; do
             test -x "/usr/lib/linux-tools/${XANMOD_KERNEL}/${tool}"
           done
-
           "/usr/lib/linux-tools/${XANMOD_KERNEL}/perf" version
           "/usr/lib/linux-tools/${XANMOD_KERNEL}/bpftool" version
-          "/usr/lib/linux-tools/${XANMOD_KERNEL}/cpupower" --version || true
-          "/usr/lib/linux-tools/${XANMOD_KERNEL}/turbostat" --version
-          "/usr/lib/linux-tools/${XANMOD_KERNEL}/rtla" --help >/dev/null
 
       - name: Test Ubuntu perf dispatcher
         run: |
@@ -229,27 +193,28 @@ jobs:
 
       - name: Import APT signing key
         env:
-          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          APT_GPG_PRIVATE_KEY_B64: ${{ secrets.APT_GPG_PRIVATE_KEY_B64 }}
         run: |
-          if [ -z "${APT_GPG_PRIVATE_KEY}" ]; then
-            echo "APT_GPG_PRIVATE_KEY GitHub Actions secret is required."
+          set -euo pipefail
+          if [ -z "${APT_GPG_PRIVATE_KEY_B64}" ]; then
+            echo "APT_GPG_PRIVATE_KEY_B64 GitHub Actions secret is required."
             exit 1
           fi
 
           export GNUPGHOME="${RUNNER_TEMP}/gnupg"
           mkdir -m 700 -p "${GNUPGHOME}"
-          printf '%s\n' "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
+          printf '%s' "${APT_GPG_PRIVATE_KEY_B64}" | base64 --decode | gpg --batch --import
           echo "GNUPGHOME=${GNUPGHOME}" >> "${GITHUB_ENV}"
 
       - name: Resolve APT signing fingerprint
-        env:
-          APT_GPG_FINGERPRINT: ${{ secrets.APT_GPG_FINGERPRINT }}
         run: |
-          if [ -z "${APT_GPG_FINGERPRINT}" ]; then
-            echo "APT_GPG_FINGERPRINT GitHub Actions secret is required."
+          set -euo pipefail
+          FINGERPRINT="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "fpr" {print $10; exit}')"
+          if [ -z "${FINGERPRINT}" ]; then
+            echo "No secret signing key was imported."
             exit 1
           fi
-          echo "APT_GPG_FINGERPRINT=${APT_GPG_FINGERPRINT}" >> "${GITHUB_ENV}"
+          echo "APT_GPG_FINGERPRINT=${FINGERPRINT}" >> "${GITHUB_ENV}"
 
       - name: Rebuild signed APT repository
         run: |
@@ -288,8 +253,7 @@ jobs:
           set -eux
           test -s "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/InRelease"
           test -s "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/main/binary-amd64/Packages"
-          gpgv \
-            --keyring "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" \
+          gpgv --keyring "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" \
             "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/InRelease"
 
       - name: Publish APT repository to gh-pages
