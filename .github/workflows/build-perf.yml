@@ -1,4 +1,4 @@
-name: Build XanMod perf
+name: Build XanMod Linux Tools
 
 on:
   workflow_dispatch:
@@ -19,7 +19,7 @@ env:
   APT_COMPONENT: "main"
 
 jobs:
-  build-perf:
+  build-tools:
     runs-on: ubuntu-24.04
 
     steps:
@@ -52,6 +52,13 @@ jobs:
             systemtap-sdt-dev \
             llvm \
             libcapstone-dev \
+            libpci-dev \
+            libpopt-dev \
+            libudev-dev \
+            libbpf-dev \
+            clang \
+            python3-docutils \
+            default-jdk \
             reprepro \
             gnupg
 
@@ -63,31 +70,97 @@ jobs:
             https://gitlab.com/xanmod/linux.git \
             xanmod-linux
 
-      - name: Build perf
+      - name: Build kernel userspace tools
         working-directory: xanmod-linux
         run: |
+          set -euxo pipefail
+
+          # Match the standard Ubuntu linux-tools set where the
+          # corresponding userspace implementation exists in the kernel tree.
           make -C tools/perf -j"$(nproc)"
+          make -C tools/bpf/bpftool -j"$(nproc)"
+          make -C tools/power/cpupower -j"$(nproc)"
+          make -C tools/power/x86/turbostat -j"$(nproc)"
+          make -C tools/power/x86/x86_energy_perf_policy -j"$(nproc)"
+          make -C tools/tracing/rtla -j"$(nproc)"
+          make -C tools/usb/usbip -j"$(nproc)"
+          make -C tools acpi -j"$(nproc)"
 
-      - name: Verify perf
+      - name: Verify built tools
         working-directory: xanmod-linux
         run: |
-          ./tools/perf/perf version
-          file ./tools/perf/perf
+          set -eux
 
-      - name: Prepare raw binary
+          ./tools/perf/perf version
+          ./tools/bpf/bpftool/src/bpftool version || ./tools/bpf/bpftool/bpftool version
+          ./tools/power/cpupower/cpupower --version || true
+          ./tools/power/x86/turbostat/turbostat --version
+          ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help >/dev/null
+          ./tools/tracing/rtla/rtla --help >/dev/null
+          ./tools/usb/usbip/src/usbip --version || true
+          ./tools/usb/usbip/src/usbipd --version || true
+          ./tools/power/acpi/acpidbg --help >/dev/null || true
+
+      - name: Prepare tools tree
         run: |
-          mkdir -p output/bin
-          cp xanmod-linux/tools/perf/perf \
-            "output/bin/perf-${XANMOD_KERNEL}-amd64"
-          chmod 755 "output/bin/perf-${XANMOD_KERNEL}-amd64"
+          set -euxo pipefail
+
+          TOOLS_ROOT="output/tools"
+          VERSION_ROOT="${TOOLS_ROOT}/${XANMOD_KERNEL}"
+          mkdir -p "${VERSION_ROOT}" "output/bin"
+
+          # perf
+          cp xanmod-linux/tools/perf/perf "${VERSION_ROOT}/perf"
+
+          # perf's JVM TI helper, when built.
+          if [ -f xanmod-linux/tools/perf/libperf-jvmti.so ]; then
+            cp xanmod-linux/tools/perf/libperf-jvmti.so "${VERSION_ROOT}/libperf-jvmti.so"
+          fi
+
+          # bpftool
+          if [ -f xanmod-linux/tools/bpf/bpftool/src/bpftool ]; then
+            cp xanmod-linux/tools/bpf/bpftool/src/bpftool "${VERSION_ROOT}/bpftool"
+          elif [ -f xanmod-linux/tools/bpf/bpftool/bpftool ]; then
+            cp xanmod-linux/tools/bpf/bpftool/bpftool "${VERSION_ROOT}/bpftool"
+          else
+            echo "bpftool binary not found"
+            exit 1
+          fi
+
+          # cpupower
+          cp xanmod-linux/tools/power/cpupower/cpupower "${VERSION_ROOT}/cpupower"
+
+          # x86 power tools
+          cp xanmod-linux/tools/power/x86/turbostat/turbostat "${VERSION_ROOT}/turbostat"
+          cp xanmod-linux/tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy \
+            "${VERSION_ROOT}/x86_energy_perf_policy"
+
+          # RTLA
+          cp xanmod-linux/tools/tracing/rtla/rtla "${VERSION_ROOT}/rtla"
+
+          # USB/IP
+          cp xanmod-linux/tools/usb/usbip/src/usbip "${VERSION_ROOT}/usbip"
+          cp xanmod-linux/tools/usb/usbip/src/usbipd "${VERSION_ROOT}/usbipd"
+
+          # ACPI debugger
+          if [ -f xanmod-linux/tools/power/acpi/acpidbg ]; then
+            cp xanmod-linux/tools/power/acpi/acpidbg "${VERSION_ROOT}/acpidbg"
+          fi
+
+          chmod 0755 "${VERSION_ROOT}"/*
+
+          # Keep the raw binaries available as a CI artifact as well.
+          cp "${VERSION_ROOT}/perf" "output/bin/perf-${XANMOD_KERNEL}-amd64"
 
       - name: Prepare Debian package
         run: |
-          PACKAGE_DIR="linux-tools-${XANMOD_KERNEL}"
+          set -euxo pipefail
 
-          mkdir -p \
-            "${PACKAGE_DIR}/DEBIAN" \
-            "${PACKAGE_DIR}/usr/lib/linux-tools/${XANMOD_KERNEL}"
+          PACKAGE_DIR="linux-tools-${XANMOD_KERNEL}"
+          VERSION_ROOT="${PACKAGE_DIR}/usr/lib/linux-tools/${XANMOD_KERNEL}"
+
+          mkdir -p "${PACKAGE_DIR}/DEBIAN" "${VERSION_ROOT}"
+          cp -a "output/tools/${XANMOD_KERNEL}/." "${VERSION_ROOT}/"
 
           cat > "${PACKAGE_DIR}/DEBIAN/control" <<EOF
           Package: linux-tools-${XANMOD_KERNEL}
@@ -96,13 +169,11 @@ jobs:
           Priority: optional
           Architecture: amd64
           Maintainer: XanMod Tools Community
-          Description: Linux performance tools for XanMod ${XANMOD_VERSION}
-           Performance analysis tools built from the matching XanMod kernel source.
+          Description: Linux kernel tools for XanMod ${XANMOD_VERSION}
+           Version-specific Linux userspace tools built from the matching XanMod kernel source.
+           Includes perf, bpftool, cpupower, turbostat, x86_energy_perf_policy,
+           rtla, USB/IP tools, and the ACPI debugger where available.
           EOF
-
-          cp xanmod-linux/tools/perf/perf \
-            "${PACKAGE_DIR}/usr/lib/linux-tools/${XANMOD_KERNEL}/perf"
-          chmod 755 "${PACKAGE_DIR}/usr/lib/linux-tools/${XANMOD_KERNEL}/perf"
 
           dpkg-deb --build \
             "${PACKAGE_DIR}" \
@@ -117,22 +188,29 @@ jobs:
 
       - name: Test Debian package
         run: |
+          set -eux
           sudo dpkg -i \
             "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
-          test -x "/usr/lib/linux-tools/${XANMOD_KERNEL}/perf"
+
+          for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd; do
+            test -x "/usr/lib/linux-tools/${XANMOD_KERNEL}/${tool}"
+          done
+
           "/usr/lib/linux-tools/${XANMOD_KERNEL}/perf" version
+          "/usr/lib/linux-tools/${XANMOD_KERNEL}/bpftool" version
+          "/usr/lib/linux-tools/${XANMOD_KERNEL}/cpupower" --version || true
+          "/usr/lib/linux-tools/${XANMOD_KERNEL}/turbostat" --version
+          "/usr/lib/linux-tools/${XANMOD_KERNEL}/rtla" --help >/dev/null
 
       - name: Test Ubuntu perf dispatcher
         run: |
-          if [ -x /usr/bin/perf ]; then
-            /usr/bin/perf version
-          fi
+          /usr/bin/perf version
 
-      - name: Upload raw perf binary
+      - name: Upload Linux tools binaries
         uses: actions/upload-artifact@v4
         with:
-          name: perf-${{ env.XANMOD_KERNEL }}-amd64
-          path: output/bin/perf-${{ env.XANMOD_KERNEL }}-amd64
+          name: linux-tools-${{ env.XANMOD_KERNEL }}-amd64
+          path: output/tools/${{ env.XANMOD_KERNEL }}/
           if-no-files-found: error
 
       - name: Upload Debian package
@@ -163,8 +241,19 @@ jobs:
           printf '%s\n' "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
           echo "GNUPGHOME=${GNUPGHOME}" >> "${GITHUB_ENV}"
 
+      - name: Resolve APT signing fingerprint
+        env:
+          APT_GPG_FINGERPRINT: ${{ secrets.APT_GPG_FINGERPRINT }}
+        run: |
+          if [ -z "${APT_GPG_FINGERPRINT}" ]; then
+            echo "APT_GPG_FINGERPRINT GitHub Actions secret is required."
+            exit 1
+          fi
+          echo "APT_GPG_FINGERPRINT=${APT_GPG_FINGERPRINT}" >> "${GITHUB_ENV}"
+
       - name: Rebuild signed APT repository
         run: |
+          set -euxo pipefail
           APT_REPO="${RUNNER_TEMP}/apt-repo"
           mkdir -p "${APT_REPO}/conf"
 
@@ -179,27 +268,24 @@ jobs:
           SignWith: ${APT_GPG_FINGERPRINT}
           EOF
 
-          # Re-import all previously published packages so older kernel-specific
-          # tools remain available when the repository is regenerated.
           find apt-pages/pool -type f -name '*.deb' -print0 2>/dev/null | \
             while IFS= read -r -d '' pkg; do
               reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"
             done
 
-          # Replace the current package when rebuilding the same kernel release.
           reprepro -b "${APT_REPO}" remove "${APT_CODENAME}" \
             "linux-tools-${XANMOD_KERNEL}" || true
 
           reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" \
             "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
-          # Publish the public key generated from the signing key.
           gpg --export-options export-minimal \
             --export "${APT_GPG_FINGERPRINT}" \
             > "${APT_REPO}/xanmodtools.gpg"
 
       - name: Validate APT repository
         run: |
+          set -eux
           test -s "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/InRelease"
           test -s "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/main/binary-amd64/Packages"
           gpgv \
