@@ -291,14 +291,26 @@ jobs:
           KEY_FILE="${RUNNER_TEMP}/apt-signing-key"
           printf '%s\n' "${APT_GPG_PRIVATE_KEY}" > "${KEY_FILE}"
 
+          IMPORT_OK=0
           if grep -q '^-----BEGIN PGP ' "${KEY_FILE}"; then
-            gpg --batch --import "${KEY_FILE}"
+            if gpg --batch --import "${KEY_FILE}"; then
+              IMPORT_OK=1
+            fi
           else
             CLEAN_B64="$(tr -d '[:space:]' < "${KEY_FILE}")"
-            printf '%s' "${CLEAN_B64}" | base64 --decode | gpg --batch --import
+            printf '%s' "${CLEAN_B64}" | base64 --decode -i > "${RUNNER_TEMP}/apt-signing-key.decoded" || true
+            if gpg --batch --import "${RUNNER_TEMP}/apt-signing-key.decoded"; then
+              IMPORT_OK=1
+            fi
+            rm -f "${RUNNER_TEMP}/apt-signing-key.decoded"
           fi
 
           rm -f "${KEY_FILE}"
+          if [ "${IMPORT_OK}" -ne 1 ] || ! gpg --batch --with-colons --list-secret-keys | grep -q '^sec:'; then
+            echo "Failed to import an APT secret signing key."
+            exit 1
+          fi
+
           echo "GNUPGHOME=${GNUPGHOME}" >> "${GITHUB_ENV}"
 
       - name: Resolve APT signing fingerprint
