@@ -1,6 +1,6 @@
 # XanMod Tools
 
-tools for xanmod
+Prebuilt kernel-specific Linux tools for XanMod kernels on Ubuntu/Debian 
 
 The repo currently provides a matching `perf` tool and Debian package for XanMod kernels where a corresponding `linux-tools` package is not available from the distribution repositories.
 
