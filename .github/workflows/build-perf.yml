@@ -32,6 +32,9 @@ jobs:
             flex \
             bison \
             pkg-config \
+            autoconf \
+            automake \
+            libtool \
             libelf-dev \
             libdw-dev \
             libunwind-dev \
@@ -80,7 +83,15 @@ jobs:
           make -C tools/power/x86/turbostat -j"$(nproc)"
           make -C tools/power/x86/x86_energy_perf_policy -j"$(nproc)"
           make -C tools/tracing/rtla -j"$(nproc)"
-          make -C tools/usb/usbip -j"$(nproc)"
+
+          # USB/IP uses Autotools and does not have a generated Makefile in
+          # the clean kernel source tree.
+          cd tools/usb/usbip
+          ./autogen.sh
+          ./configure --with-tcp-wrappers=no
+          make -j"$(nproc)"
+
+          cd ../../..
           make -C tools acpi -j"$(nproc)"
 
       - name: Verify built tools
