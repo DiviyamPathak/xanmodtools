@@ -72,8 +72,8 @@ jobs:
           fi
 
           CPUP_POWER_DIR="$(pwd)/tools/power/cpupower"
-          LD_LIBRARY_PATH="${CPUP_POWER_DIR}/lib:${LD_LIBRARY_PATH:-}" \
-            ./tools/power/cpupower/cpupower --version || true
+          LD_LIBRARY_PATH="${CPUP_POWER_DIR}:${LD_LIBRARY_PATH:-}" \
+            ./tools/power/cpupower/cpupower --version
 
           ./tools/power/x86/turbostat/turbostat --version
 
@@ -82,7 +82,7 @@ jobs:
             test $? -eq 1
 
           ./tools/tracing/rtla/rtla --help >/dev/null
-          ./tools/usb/usbip/src/usbip --version || true
+          ./tools/usb/usbip/src/usbip version || true
           ./tools/usb/usbip/src/usbipd --version || true
 
           # ACPI tools built by `make -C tools acpi`.
@@ -123,7 +123,7 @@ jobs:
           cp xanmod-linux/tools/power/acpi/tools/ec/ec "${VERSION_ROOT}/ec"
           cp xanmod-linux/tools/power/acpi/tools/pfrut/pfrut "${VERSION_ROOT}/pfrut"
 
-          # Make cpupower self-contained when installed under /usr/lib/linux-tools/<kernel>/.
+          # The library is packaged beside cpupower so $ORIGIN finds it.
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
 
           chmod 0755 "${VERSION_ROOT}"/*
@@ -167,7 +167,7 @@ jobs:
           done
           "/usr/lib/linux-tools/${XANMOD_KERNEL}/perf" version
           "/usr/lib/linux-tools/${XANMOD_KERNEL}/bpftool" version
-          "/usr/lib/linux-tools/${XANMOD_KERNEL}/cpupower" --version || true
+          "/usr/lib/linux-tools/${XANMOD_KERNEL}/cpupower" --version
 
       - name: Test Ubuntu perf dispatcher
         run: /usr/bin/perf version
