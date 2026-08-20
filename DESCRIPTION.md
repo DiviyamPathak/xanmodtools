@@ -1,8 +1,8 @@
 # XanMod Tools
 
-Version-specific Linux userspace tools built from the matching XanMod kernel source and packaged for Ubuntu/Debian systems.
+tools for xanmod
 
-The project currently provides a matching `perf` tool and Debian package for XanMod kernels where a corresponding `linux-tools` package is not available from the distribution repositories.
+The repo currently provides a matching `perf` tool and Debian package for XanMod kernels where a corresponding `linux-tools` package is not available from the distribution repositories.
 
 ## Current distribution
 
@@ -15,4 +15,4 @@ The project currently provides a matching `perf` tool and Debian package for Xan
 
 APT repository: https://diviyampathak.github.io/xanmodtools/
 
-This project is community-maintained and is not affiliated with or endorsed by XanMod or Ubuntu.
+This repo is community-maintained and is not affiliated with or endorsed by XanMod or Ubuntu.
