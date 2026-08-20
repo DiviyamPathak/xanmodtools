@@ -2,19 +2,19 @@ Origin: XanMod Tools
 Label: XanMod Tools
 Suite: noble
 Codename: noble
-Date: Thu, 20 Aug 2026 22:57:52 UTC
+Date: Thu, 20 Aug 2026 23:04:35 UTC
 Architectures: amd64
 Components: main
 Description: XanMod kernel-specific Linux tools
 MD5Sum:
- cd9adc07e0d1a87b713e55b71d62e307 663 main/binary-amd64/Packages
- 276d00c06c4d31b598c4c62e8e7b2a73 445 main/binary-amd64/Packages.gz
+ e6d3519937dc6512cabe1e38dc114b57 663 main/binary-amd64/Packages
+ 8803bf767e70fcd82b74470d035fceb0 446 main/binary-amd64/Packages.gz
  8e8968d0ea696a59820d0d4c7f4d7cc5 140 main/binary-amd64/Release
 SHA1:
- 48db9c316cd88745a355947664074549aeab1540 663 main/binary-amd64/Packages
- 1b5dbe9b87dcf18f473e19528d7deea8d4bc3d49 445 main/binary-amd64/Packages.gz
+ 024d6c51c870e511b7140644c09f206581fcc3d1 663 main/binary-amd64/Packages
+ 7aa170ef35d3f6b91da5b29e64211cbe6eec0112 446 main/binary-amd64/Packages.gz
  e8e22bd0f199f7aed7306a1733ecd5736f0038be 140 main/binary-amd64/Release
 SHA256:
- 2c7240f21ad87d367894e0264b113c38e50ce39e4d75b853b32021d8571165d9 663 main/binary-amd64/Packages
- aa47aaf8087daf7758b85baed455f797ed0f714772e9c326bf193714b7b9f081 445 main/binary-amd64/Packages.gz
+ 6df4e90cc499c922fe8b53038de3c7ccbc662289dacae3a2de76b4cbf030cba0 663 main/binary-amd64/Packages
+ b2f3604b60533fa3f234bd7fc1f736138a1e0484c73d643228c160039943ac81 446 main/binary-amd64/Packages.gz
  fdb9177edd4b37ffe220212947fa723077aea084c74963d12316a753f425ac07 140 main/binary-amd64/Release
