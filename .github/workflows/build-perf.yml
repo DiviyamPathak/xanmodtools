@@ -85,10 +85,10 @@ jobs:
           ./tools/usb/usbip/src/usbip version
           ./tools/usb/usbip/src/usbipd --version || true
 
-          test -x ./tools/power/acpi/tools/acpidbg/acpidbg
-          test -x ./tools/power/acpi/tools/acpidump/acpidump
-          test -x ./tools/power/acpi/tools/ec/ec
-          test -x ./tools/power/acpi/tools/pfrut/pfrut
+          test -x ./tools/power/acpi/tools/acpidbg/tools/acpidbg/acpidbg
+          test -x ./tools/power/acpi/tools/acpidump/tools/acpidump/acpidump
+          test -x ./tools/power/acpi/tools/ec/tools/ec/ec
+          test -x ./tools/power/acpi/tools/pfrut/tools/pfrut/pfrut
 
       - name: Prepare tools tree
         run: |
@@ -123,10 +123,10 @@ jobs:
             \( -type f -o -type l \) -name 'libusbip.so*' \
             -exec cp -a {} "${VERSION_ROOT}/" \;
 
-          cp xanmod-linux/tools/power/acpi/tools/acpidbg/acpidbg "${VERSION_ROOT}/acpidbg"
-          cp xanmod-linux/tools/power/acpi/tools/acpidump/acpidump "${VERSION_ROOT}/acpidump"
-          cp xanmod-linux/tools/power/acpi/tools/ec/ec "${VERSION_ROOT}/ec"
-          cp xanmod-linux/tools/power/acpi/tools/pfrut/pfrut "${VERSION_ROOT}/pfrut"
+          cp xanmod-linux/tools/power/acpi/tools/acpidbg/tools/acpidbg/acpidbg "${VERSION_ROOT}/acpidbg"
+          cp xanmod-linux/tools/power/acpi/tools/acpidump/tools/acpidump/acpidump "${VERSION_ROOT}/acpidump"
+          cp xanmod-linux/tools/power/acpi/tools/ec/tools/ec/ec "${VERSION_ROOT}/ec"
+          cp xanmod-linux/tools/power/acpi/tools/pfrut/tools/pfrut/pfrut "${VERSION_ROOT}/pfrut"
 
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
@@ -290,7 +290,6 @@ jobs:
           SignWith: ${APT_GPG_FINGERPRINT}
           EOF
 
-          # Import every previously published package except the package being rebuilt.
           find apt-pages/pool -type f -name '*.deb' ! -name "${CURRENT_DEB}" -print0 2>/dev/null | \
             while IFS= read -r -d '' pkg; do
               reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"
@@ -340,7 +339,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            output/bin/perf-${{ env.XANMOD_KERNEL }}-amd64
             output/linux-tools-${{ env.XANMOD_KERNEL }}_${{ env.PACKAGE_VERSION }}_amd64.deb
             output/linux-tools-${{ env.XANMOD_KERNEL }}-amd64.tar.gz
-            output/bin/perf-${{ env.XANMOD_KERNEL }}-amd64
           generate_release_notes: true
