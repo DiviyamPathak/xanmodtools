@@ -1,8 +1,7 @@
 name: Build XanMod Linux Tools
 
-on:
+"on":
   workflow_dispatch:
-
   push:
     branches:
       - feat/apt-and-tools
@@ -132,11 +131,17 @@ jobs:
           done
 
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
-          if file -b "${VERSION_ROOT}/usbip" | grep -q '^ELF' && compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
-            patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
+
+          if file -b "${VERSION_ROOT}/usbip" | grep -q '^ELF'; then
+            if compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
+              patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
+            fi
           fi
-          if file -b "${VERSION_ROOT}/usbipd" | grep -q '^ELF' && compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
-            patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
+
+          if file -b "${VERSION_ROOT}/usbipd" | grep -q '^ELF'; then
+            if compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
+              patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
+            fi
           fi
 
           find "${VERSION_ROOT}" -maxdepth 1 -type f -exec chmod 0755 {} +
@@ -208,6 +213,7 @@ jobs:
           for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd acpidbg acpidump ec pfrut; do
             test -x "${ROOT}/${tool}"
           done
+
           "${ROOT}/perf" version
           "${ROOT}/bpftool" version
           "${ROOT}/cpupower" --version
@@ -289,6 +295,7 @@ jobs:
           APT_REPO="${RUNNER_TEMP}/apt-repo"
           CURRENT_DEB="linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           mkdir -p "${APT_REPO}/conf"
+
           cat > "${APT_REPO}/conf/distributions" <<EOF
 Codename: ${APT_CODENAME}
 Suite: ${APT_CODENAME}
@@ -309,6 +316,7 @@ EOF
             "linux-tools-${XANMOD_KERNEL}" || true
           reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" \
             "output/${CURRENT_DEB}"
+
           gpg --export-options export-minimal --export "${APT_GPG_FINGERPRINT}" \
             > "${APT_REPO}/xanmodtools.gpg"
 
@@ -328,14 +336,17 @@ EOF
           cp -a "${RUNNER_TEMP}/apt-repo/dists" apt-pages/
           cp -a "${RUNNER_TEMP}/apt-repo/pool" apt-pages/
           cp "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" apt-pages/
+
           cd apt-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dists pool xanmodtools.gpg
+
           if git diff --cached --quiet; then
             echo "No APT repository changes to publish."
             exit 0
           fi
+
           git commit -m "Publish XanMod ${XANMOD_KERNEL} tools"
           git push origin HEAD:gh-pages
 
