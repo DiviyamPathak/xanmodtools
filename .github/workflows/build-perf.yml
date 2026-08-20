@@ -47,6 +47,7 @@ jobs:
         working-directory: xanmod-linux
         run: |
           set -euxo pipefail
+
           make -C tools/perf -j"$(nproc)"
           make -C tools/bpf/bpftool -j"$(nproc)"
           make -C tools/power/cpupower -j"$(nproc)"
@@ -66,7 +67,9 @@ jobs:
         working-directory: xanmod-linux
         run: |
           set -eux
+
           ./tools/perf/perf version
+
           if [ -x ./tools/bpf/bpftool/src/bpftool ]; then
             ./tools/bpf/bpftool/src/bpftool version
           else
@@ -151,6 +154,7 @@ jobs:
         run: |
           set -euxo pipefail
           VERSION_ROOT="output/tools/${XANMOD_KERNEL}"
+
           while IFS= read -r -d '' binary; do
             if file -b "${binary}" | grep -q 'ELF'; then
               echo "Checking ${binary}"
@@ -174,8 +178,9 @@ jobs:
 
           mapfile -t BINARIES < <(find "${VERSION_ROOT}" -maxdepth 1 -type f -perm -111 -print)
           SHLIB_DEPS=""
+
           if [ "${#BINARIES[@]}" -gt 0 ]; then
-            SHLIB_OUTPUT="$(dpkg-shlibdeps -O -l"${VERSION_ROOT}" "${BINARIES[@]}" 2>&1 || true)"
+            SHLIB_OUTPUT="$(dpkg-shlibdeps -O -l"${VERSION_ROOT}" "${BINARIES[@]}")"
             SHLIB_DEPS="$(printf '%s\n' "${SHLIB_OUTPUT}" | sed -n 's/^shlibs:Depends=//p' | paste -sd, -)"
           fi
 
@@ -200,6 +205,7 @@ jobs:
 
       - name: Inspect Debian package
         run: |
+          set -eux
           dpkg-deb --info "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           dpkg-deb --contents "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
@@ -296,28 +302,28 @@ jobs:
           CURRENT_DEB="linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           mkdir -p "${APT_REPO}/conf"
 
-          cat > "${APT_REPO}/conf/distributions" <<EOF
-Codename: ${APT_CODENAME}
-Suite: ${APT_CODENAME}
-Architectures: amd64
-Components: ${APT_COMPONENT}
-Origin: XanMod Tools
-Label: XanMod Tools
-Description: XanMod kernel-specific Linux tools
-SignWith: ${APT_GPG_FINGERPRINT}
-EOF
+          printf '%s\n' \
+            "Codename: ${APT_CODENAME}" \
+            "Suite: ${APT_CODENAME}" \
+            'Architectures: amd64' \
+            "Components: ${APT_COMPONENT}" \
+            'Origin: XanMod Tools' \
+            'Label: XanMod Tools' \
+            'Description: XanMod kernel-specific Linux tools' \
+            "SignWith: ${APT_GPG_FINGERPRINT}" \
+            > "${APT_REPO}/conf/distributions"
 
-          find apt-pages/pool -type f -name '*.deb' ! -name "${CURRENT_DEB}" -print0 2>/dev/null | \
-            while IFS= read -r -d '' pkg; do
-              reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"
-            done
+          while IFS= read -r -d '' pkg; do
+            reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"
+          done < <(find apt-pages/pool -type f -name '*.deb' ! -name "${CURRENT_DEB}" -print0 2>/dev/null)
 
           reprepro -b "${APT_REPO}" remove "${APT_CODENAME}" \
             "linux-tools-${XANMOD_KERNEL}" || true
           reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" \
             "output/${CURRENT_DEB}"
 
-          gpg --export-options export-minimal --export "${APT_GPG_FINGERPRINT}" \
+          gpg --export-options export-minimal \
+            --export "${APT_GPG_FINGERPRINT}" \
             > "${APT_REPO}/xanmodtools.gpg"
 
       - name: Validate APT repository
@@ -332,18 +338,22 @@ EOF
 
       - name: Publish APT repository to gh-pages
         run: |
+          set -euo pipefail
           rm -rf apt-pages/dists apt-pages/pool
           cp -a "${RUNNER_TEMP}/apt-repo/dists" apt-pages/
           cp -a "${RUNNER_TEMP}/apt-repo/pool" apt-pages/
           cp "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" apt-pages/
+
           cd apt-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dists pool xanmodtools.gpg
+
           if git diff --cached --quiet; then
             echo "No APT repository changes to publish."
             exit 0
           fi
+
           git commit -m "Publish XanMod ${XANMOD_KERNEL} tools"
           git push origin HEAD:gh-pages
 
