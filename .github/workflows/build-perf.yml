@@ -47,7 +47,6 @@ jobs:
         working-directory: xanmod-linux
         run: |
           set -euxo pipefail
-
           make -C tools/perf -j"$(nproc)"
           make -C tools/bpf/bpftool -j"$(nproc)"
           make -C tools/power/cpupower -j"$(nproc)"
@@ -67,9 +66,7 @@ jobs:
         working-directory: xanmod-linux
         run: |
           set -eux
-
           ./tools/perf/perf version
-
           if [ -x ./tools/bpf/bpftool/src/bpftool ]; then
             ./tools/bpf/bpftool/src/bpftool version
           else
@@ -79,7 +76,6 @@ jobs:
           CPUP_POWER_DIR="$(pwd)/tools/power/cpupower"
           LD_LIBRARY_PATH="${CPUP_POWER_DIR}:${LD_LIBRARY_PATH:-}" \
             ./tools/power/cpupower/cpupower --version
-
           ./tools/power/x86/turbostat/turbostat --version
           ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help \
             >/dev/null 2>&1 || test $? -eq 1
@@ -99,12 +95,10 @@ jobs:
           set -euxo pipefail
           VERSION_ROOT="output/tools/${XANMOD_KERNEL}"
           mkdir -p "${VERSION_ROOT}" output/bin
-
           cp xanmod-linux/tools/perf/perf "${VERSION_ROOT}/perf"
           if [ -f xanmod-linux/tools/perf/libperf-jvmti.so ]; then
             cp xanmod-linux/tools/perf/libperf-jvmti.so "${VERSION_ROOT}/libperf-jvmti.so"
           fi
-
           if [ -f xanmod-linux/tools/bpf/bpftool/src/bpftool ]; then
             cp xanmod-linux/tools/bpf/bpftool/src/bpftool "${VERSION_ROOT}/bpftool"
           else
@@ -115,7 +109,6 @@ jobs:
           find xanmod-linux/tools/power/cpupower -maxdepth 3 \
             \( -type f -o -type l \) -name 'libcpupower.so*' \
             -exec cp -a {} "${VERSION_ROOT}/" \;
-
           cp xanmod-linux/tools/power/x86/turbostat/turbostat "${VERSION_ROOT}/turbostat"
           cp xanmod-linux/tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy \
             "${VERSION_ROOT}/x86_energy_perf_policy"
@@ -134,17 +127,11 @@ jobs:
           done
 
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
-
-          if file -b "${VERSION_ROOT}/usbip" | grep -q '^ELF'; then
-            if compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
-              patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
-            fi
+          if file -b "${VERSION_ROOT}/usbip" | grep -q '^ELF' && compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
+            patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
           fi
-
-          if file -b "${VERSION_ROOT}/usbipd" | grep -q '^ELF'; then
-            if compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
-              patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
-            fi
+          if file -b "${VERSION_ROOT}/usbipd" | grep -q '^ELF' && compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
+            patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
           fi
 
           find "${VERSION_ROOT}" -maxdepth 1 -type f -exec chmod 0755 {} +
@@ -154,7 +141,6 @@ jobs:
         run: |
           set -euxo pipefail
           VERSION_ROOT="output/tools/${XANMOD_KERNEL}"
-
           while IFS= read -r -d '' binary; do
             if file -b "${binary}" | grep -q 'ELF'; then
               echo "Checking ${binary}"
@@ -172,17 +158,27 @@ jobs:
           PACKAGE_DIR="linux-tools-${XANMOD_KERNEL}"
           VERSION_ROOT="${PACKAGE_DIR}/usr/lib/linux-tools/${XANMOD_KERNEL}"
           SOURCE_ROOT="output/tools/${XANMOD_KERNEL}"
-
           mkdir -p "${PACKAGE_DIR}/DEBIAN" "${VERSION_ROOT}"
           cp -a "${SOURCE_ROOT}/." "${VERSION_ROOT}/"
 
+          # The binaries live under /usr/lib/linux-tools/<kernel>; dpkg-shlibdeps
+          # cannot infer a package context for this custom layout. Determine the
+          # required host packages from ldd and encode them explicitly.
+          declare -A RUNTIME_PKGS=()
           mapfile -t BINARIES < <(find "${VERSION_ROOT}" -maxdepth 1 -type f -perm -111 -print)
-          SHLIB_DEPS=""
 
-          if [ "${#BINARIES[@]}" -gt 0 ]; then
-            SHLIB_OUTPUT="$(dpkg-shlibdeps -O -l"${VERSION_ROOT}" "${BINARIES[@]}")"
-            SHLIB_DEPS="$(printf '%s\n' "${SHLIB_OUTPUT}" | sed -n 's/^shlibs:Depends=//p' | paste -sd, -)"
-          fi
+          for binary in "${BINARIES[@]}"; do
+            if ! file -b "${binary}" | grep -q '^ELF'; then
+              continue
+            fi
+            while read -r libpath; do
+              [ -n "${libpath}" ] || continue
+              pkg="$(dpkg-query -S "${libpath}" 2>/dev/null | head -n1 | cut -d: -f1 || true)"
+              [ -n "${pkg}" ] && RUNTIME_PKGS["${pkg}"]=1
+            done < <(ldd "${binary}" 2>/dev/null | awk '/=> \/.* \(/ {print $3} /^\// {print $1}' | sort -u)
+          done
+
+          SHLIB_DEPS="$(printf '%s\n' "${!RUNTIME_PKGS[@]}" | sort -u | paste -sd, -)"
 
           {
             printf 'Package: linux-tools-%s\n' "${XANMOD_KERNEL}"
@@ -205,7 +201,6 @@ jobs:
 
       - name: Inspect Debian package
         run: |
-          set -eux
           dpkg-deb --info "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           dpkg-deb --contents "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
@@ -215,11 +210,9 @@ jobs:
           DEB="output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           sudo dpkg -i "${DEB}"
           ROOT="/usr/lib/linux-tools/${XANMOD_KERNEL}"
-
           for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd acpidbg acpidump ec pfrut; do
             test -x "${ROOT}/${tool}"
           done
-
           "${ROOT}/perf" version
           "${ROOT}/bpftool" version
           "${ROOT}/cpupower" --version
@@ -234,12 +227,10 @@ jobs:
           "${ROOT}/pfrut" --help >/dev/null 2>&1 || true
 
           while IFS= read -r -d '' binary; do
-            if file -b "${binary}" | grep -q 'ELF'; then
-              if ldd "${binary}" 2>/dev/null | grep -q 'not found'; then
-                ldd "${binary}" || true
-                echo "Installed package has missing runtime dependency: ${binary}"
-                exit 1
-              fi
+            if file -b "${binary}" | grep -q 'ELF' && ldd "${binary}" 2>/dev/null | grep -q 'not found'; then
+              ldd "${binary}" || true
+              echo "Installed package has missing runtime dependency: ${binary}"
+              exit 1
             fi
           done < <(find "${ROOT}" -maxdepth 1 -type f -perm -111 -print0)
 
@@ -301,29 +292,28 @@ jobs:
           APT_REPO="${RUNNER_TEMP}/apt-repo"
           CURRENT_DEB="linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           mkdir -p "${APT_REPO}/conf"
-
           printf '%s\n' \
             "Codename: ${APT_CODENAME}" \
             "Suite: ${APT_CODENAME}" \
-            'Architectures: amd64' \
+            "Architectures: amd64" \
             "Components: ${APT_COMPONENT}" \
-            'Origin: XanMod Tools' \
-            'Label: XanMod Tools' \
-            'Description: XanMod kernel-specific Linux tools' \
+            "Origin: XanMod Tools" \
+            "Label: XanMod Tools" \
+            "Description: XanMod kernel-specific Linux tools" \
             "SignWith: ${APT_GPG_FINGERPRINT}" \
             > "${APT_REPO}/conf/distributions"
 
-          while IFS= read -r -d '' pkg; do
-            reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"
-          done < <(find apt-pages/pool -type f -name '*.deb' ! -name "${CURRENT_DEB}" -print0 2>/dev/null)
+          find apt-pages/pool -type f -name '*.deb' ! -name "${CURRENT_DEB}" -print0 2>/dev/null | \
+            while IFS= read -r -d '' pkg; do
+              reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"
+            done
 
           reprepro -b "${APT_REPO}" remove "${APT_CODENAME}" \
             "linux-tools-${XANMOD_KERNEL}" || true
           reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" \
             "output/${CURRENT_DEB}"
 
-          gpg --export-options export-minimal \
-            --export "${APT_GPG_FINGERPRINT}" \
+          gpg --export-options export-minimal --export "${APT_GPG_FINGERPRINT}" \
             > "${APT_REPO}/xanmodtools.gpg"
 
       - name: Validate APT repository
@@ -338,22 +328,18 @@ jobs:
 
       - name: Publish APT repository to gh-pages
         run: |
-          set -euo pipefail
           rm -rf apt-pages/dists apt-pages/pool
           cp -a "${RUNNER_TEMP}/apt-repo/dists" apt-pages/
           cp -a "${RUNNER_TEMP}/apt-repo/pool" apt-pages/
           cp "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" apt-pages/
-
           cd apt-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dists pool xanmodtools.gpg
-
           if git diff --cached --quiet; then
             echo "No APT repository changes to publish."
             exit 0
           fi
-
           git commit -m "Publish XanMod ${XANMOD_KERNEL} tools"
           git push origin HEAD:gh-pages
 
