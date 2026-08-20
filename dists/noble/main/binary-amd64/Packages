@@ -5,10 +5,12 @@ Maintainer: XanMod Tools Community
 Priority: optional
 Section: devel
 Filename: pool/main/l/linux-tools-7.1.6-x64v3-xanmod1/linux-tools-7.1.6-x64v3-xanmod1_7.1.6-1_amd64.deb
-Size: 3520478
-SHA256: f86ba5c15d6d133a68eee08cc4d05260345374be508ab31acd91fd277df0f53b
-SHA1: 2c352f5d531cf3ae20ed7ab50b1510bad55e5c8c
-MD5sum: 15b964fea60e3e6e02ba4c37c681af89
-Description: Linux performance tools for XanMod 7.1.6
- Performance tools built from the matching XanMod 7.1.6 kernel source.
+Size: 5052330
+SHA256: 28e721025d572d426edcf265753b7983350fa9d18c9b2e267cda0ad99fb343c5
+SHA1: 9d811c5dd8b3788753a21297c6a349fb8fb35d45
+MD5sum: e24ec6558041df0b22c25115b0ed3757
+Description: Linux kernel tools for XanMod 7.1.6
+ Version-specific Linux userspace tools built from the matching XanMod kernel source.
+ Includes perf, bpftool, cpupower, turbostat, x86_energy_perf_policy,
+ rtla, USB/IP, and ACPI tools.
 
