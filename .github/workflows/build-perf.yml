@@ -59,6 +59,7 @@ jobs:
             libpopt-dev \
             libudev-dev \
             libbpf-dev \
+            libuuid-dev \
             clang \
             python3-docutils \
             default-jdk \
