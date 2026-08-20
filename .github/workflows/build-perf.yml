@@ -34,7 +34,7 @@ jobs:
             libssl-dev libzstd-dev liblzma-dev libaudit-dev libdebuginfod-dev \
             systemtap-sdt-dev llvm libcapstone-dev libpci-dev libpopt-dev \
             libudev-dev libbpf-dev uuid-dev clang python3-docutils default-jdk \
-            reprepro gnupg patchelf dpkg-dev
+            reprepro gnupg patchelf dpkg-dev file
 
       - name: Clone XanMod source
         run: |
@@ -65,7 +65,6 @@ jobs:
         run: |
           set -eux
           ./tools/perf/perf version
-
           if [ -x ./tools/bpf/bpftool/src/bpftool ]; then
             ./tools/bpf/bpftool/src/bpftool version
           else
@@ -119,18 +118,9 @@ jobs:
 
           cp xanmod-linux/tools/usb/usbip/src/usbip "${VERSION_ROOT}/usbip"
           cp xanmod-linux/tools/usb/usbip/src/usbipd "${VERSION_ROOT}/usbipd"
-          find xanmod-linux/tools/usb/usbip -maxdepth 5 \
+          find xanmod-linux/tools/usb/usbip -maxdepth 6 \
             \( -type f -o -type l \) -name 'libusbip.so*' \
             -exec cp -a {} "${VERSION_ROOT}/" \; || true
-
-          # libtool may place the USB/IP shared library in a .libs directory;
-          # discover it explicitly if the versioned filename is not copied above.
-          if ! compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
-            USBIP_LIB="$(find xanmod-linux/tools/usb/usbip -type f -name 'libusbip.so*' -print -quit)"
-            if [ -n "${USBIP_LIB}" ]; then
-              cp -a "${USBIP_LIB}" "${VERSION_ROOT}/"
-            fi
-          fi
 
           for tool in acpidbg acpidump ec pfrut; do
             ACPI_BIN="$(find xanmod-linux/tools/power/acpi -type f -name "${tool}" -perm -111 -print -quit)"
@@ -159,7 +149,6 @@ jobs:
         run: |
           set -euxo pipefail
           VERSION_ROOT="output/tools/${XANMOD_KERNEL}"
-
           while IFS= read -r -d '' binary; do
             if file -b "${binary}" | grep -q 'ELF'; then
               echo "Checking ${binary}"
@@ -184,23 +173,25 @@ jobs:
           mapfile -t BINARIES < <(find "${VERSION_ROOT}" -maxdepth 1 -type f -perm -111 -print)
           SHLIB_DEPS=""
           if [ "${#BINARIES[@]}" -gt 0 ]; then
-            SHLIB_OUTPUT="$(dpkg-shlibdeps -O -l"${VERSION_ROOT}" "${BINARIES[@]}" 2>/dev/null || true)"
+            SHLIB_OUTPUT="$(dpkg-shlibdeps -O -l"${VERSION_ROOT}" "${BINARIES[@]}" 2>&1 || true)"
             SHLIB_DEPS="$(printf '%s\n' "${SHLIB_OUTPUT}" | sed -n 's/^shlibs:Depends=//p' | paste -sd, -)"
           fi
 
-          cat > "${PACKAGE_DIR}/DEBIAN/control" <<EOF
-          Package: linux-tools-${XANMOD_KERNEL}
-          Version: ${PACKAGE_VERSION}
-          Section: devel
-          Priority: optional
-          Architecture: amd64
-          Maintainer: XanMod Tools Community
-          ${SHLIB_DEPS:+Depends: ${SHLIB_DEPS}}
-          Description: Linux kernel tools for XanMod ${XANMOD_VERSION}
-           Version-specific Linux userspace tools built from the matching XanMod kernel source.
-           Includes perf, bpftool, cpupower, turbostat, x86_energy_perf_policy,
-           rtla, USB/IP, and ACPI tools.
-          EOF
+          {
+            printf 'Package: linux-tools-%s\n' "${XANMOD_KERNEL}"
+            printf 'Version: %s\n' "${PACKAGE_VERSION}"
+            printf 'Section: devel\n'
+            printf 'Priority: optional\n'
+            printf 'Architecture: amd64\n'
+            printf 'Maintainer: XanMod Tools Community\n'
+            if [ -n "${SHLIB_DEPS}" ]; then
+              printf 'Depends: %s\n' "${SHLIB_DEPS}"
+            fi
+            printf 'Description: Linux kernel tools for XanMod %s\n' "${XANMOD_VERSION}"
+            printf ' Version-specific Linux userspace tools built from the matching XanMod kernel source.\n'
+            printf ' Includes perf, bpftool, cpupower, turbostat, x86_energy_perf_policy,\n'
+            printf ' rtla, USB/IP, and ACPI tools.\n'
+          } > "${PACKAGE_DIR}/DEBIAN/control"
 
           dpkg-deb --build "${PACKAGE_DIR}" \
             "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
@@ -257,6 +248,13 @@ jobs:
             "output/linux-tools-${XANMOD_KERNEL}-amd64.tar.gz" \
             "${XANMOD_KERNEL}"
 
+      - name: Upload tools archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-tools-${{ env.XANMOD_KERNEL }}-tarball
+          path: output/linux-tools-${{ env.XANMOD_KERNEL }}-amd64.tar.gz
+          if-no-files-found: error
+
       - name: Upload Debian package
         uses: actions/upload-artifact@v4
         with:
@@ -276,10 +274,7 @@ jobs:
           APT_GPG_PRIVATE_KEY_B64: ${{ secrets.APT_GPG_PRIVATE_KEY_B64 }}
         run: |
           set -euo pipefail
-          if [ -z "${APT_GPG_PRIVATE_KEY_B64}" ]; then
-            echo "APT_GPG_PRIVATE_KEY_B64 GitHub Actions secret is required."
-            exit 1
-          fi
+          test -n "${APT_GPG_PRIVATE_KEY_B64}"
           export GNUPGHOME="${RUNNER_TEMP}/gnupg"
           mkdir -m 700 -p "${GNUPGHOME}"
           printf '%s' "${APT_GPG_PRIVATE_KEY_B64}" | base64 --decode | gpg --batch --import
@@ -300,15 +295,15 @@ jobs:
           mkdir -p "${APT_REPO}/conf"
 
           cat > "${APT_REPO}/conf/distributions" <<EOF
-          Codename: ${APT_CODENAME}
-          Suite: ${APT_CODENAME}
-          Architectures: amd64
-          Components: ${APT_COMPONENT}
-          Origin: XanMod Tools
-          Label: XanMod Tools
-          Description: XanMod kernel-specific Linux tools
-          SignWith: ${APT_GPG_FINGERPRINT}
-          EOF
+Codename: ${APT_CODENAME}
+Suite: ${APT_CODENAME}
+Architectures: amd64
+Components: ${APT_COMPONENT}
+Origin: XanMod Tools
+Label: XanMod Tools
+Description: XanMod kernel-specific Linux tools
+SignWith: ${APT_GPG_FINGERPRINT}
+EOF
 
           find apt-pages/pool -type f -name '*.deb' ! -name "${CURRENT_DEB}" -print0 2>/dev/null | \
             while IFS= read -r -d '' pkg; do
@@ -317,7 +312,6 @@ jobs:
 
           reprepro -b "${APT_REPO}" remove "${APT_CODENAME}" \
             "linux-tools-${XANMOD_KERNEL}" || true
-
           reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" \
             "output/${CURRENT_DEB}"
 
@@ -345,12 +339,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dists pool xanmodtools.gpg
-
           if git diff --cached --quiet; then
             echo "No APT repository changes to publish."
             exit 0
           fi
-
           git commit -m "Publish XanMod ${XANMOD_KERNEL} tools"
           git push origin HEAD:gh-pages
 
