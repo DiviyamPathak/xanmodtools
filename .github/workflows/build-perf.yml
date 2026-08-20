@@ -109,7 +109,6 @@ jobs:
           if [ -f tools/perf/libperf-jvmti.so ]; then
             cp tools/perf/libperf-jvmti.so "${VERSION_ROOT}/libperf-jvmti.so"
           fi
-
           if [ -f tools/bpf/bpftool/src/bpftool ]; then
             cp tools/bpf/bpftool/src/bpftool "${VERSION_ROOT}/bpftool"
           else
@@ -120,7 +119,6 @@ jobs:
           find tools/power/cpupower -maxdepth 3 \
             \( -type f -o -type l \) -name 'libcpupower.so*' \
             -exec cp -a {} "${VERSION_ROOT}/" \;
-
           cp tools/power/x86/turbostat/turbostat "${VERSION_ROOT}/turbostat"
           cp tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy \
             "${VERSION_ROOT}/x86_energy_perf_policy"
@@ -136,7 +134,6 @@ jobs:
           cp "${USBIP_BIN}" "${VERSION_ROOT}/usbip"
           cp "${USBIPD_BIN}" "${VERSION_ROOT}/usbipd"
           cp -a "${USBIP_LIB}" "${VERSION_ROOT}/"
-
           USBIP_LIB_DIR="$(dirname "${USBIP_LIB}")"
           find "${USBIP_LIB_DIR}" -maxdepth 1 -type l -name 'libusbip.so*' \
             -exec cp -a {} "${VERSION_ROOT}/" \; || true
@@ -224,11 +221,9 @@ jobs:
           DEB="output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           sudo dpkg -i "${DEB}"
           ROOT="/usr/lib/linux-tools/${XANMOD_KERNEL}"
-
           for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd acpidbg acpidump ec pfrut; do
             test -x "${ROOT}/${tool}"
           done
-
           "${ROOT}/perf" version
           "${ROOT}/bpftool" version
           "${ROOT}/cpupower" --version
@@ -286,13 +281,13 @@ jobs:
 
       - name: Import APT signing key
         env:
-          APT_GPG_PRIVATE_KEY_B64: ${{ secrets.APT_GPG_PRIVATE_KEY_B64 }}
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          test -n "${APT_GPG_PRIVATE_KEY_B64}"
+          test -n "${APT_GPG_PRIVATE_KEY}"
           export GNUPGHOME="${RUNNER_TEMP}/gnupg"
           mkdir -m 700 -p "${GNUPGHOME}"
-          printf '%s' "${APT_GPG_PRIVATE_KEY_B64}" | base64 --decode | gpg --batch --import
+          printf '%s\n' "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
           echo "GNUPGHOME=${GNUPGHOME}" >> "${GITHUB_ENV}"
 
       - name: Resolve APT signing fingerprint
