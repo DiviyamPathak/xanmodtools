@@ -77,16 +77,12 @@ jobs:
             ./tools/power/cpupower/cpupower --version
 
           ./tools/power/x86/turbostat/turbostat --version
-
           ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help \
             >/dev/null 2>&1 || test $? -eq 1
-
           ./tools/tracing/rtla/rtla --help >/dev/null
           ./tools/usb/usbip/src/usbip version
           ./tools/usb/usbip/src/usbipd --version || true
 
-          # ACPI builds create nested tool directories; discover the actual
-          # executable rather than relying on a kernel-tree-specific path.
           for tool in acpidbg acpidump ec pfrut; do
             ACPI_BIN="$(find ./tools/power/acpi -type f -name "${tool}" -perm -111 -print -quit)"
             test -n "${ACPI_BIN}"
@@ -123,12 +119,19 @@ jobs:
 
           cp xanmod-linux/tools/usb/usbip/src/usbip "${VERSION_ROOT}/usbip"
           cp xanmod-linux/tools/usb/usbip/src/usbipd "${VERSION_ROOT}/usbipd"
-          find xanmod-linux/tools/usb/usbip -maxdepth 4 \
+          find xanmod-linux/tools/usb/usbip -maxdepth 5 \
             \( -type f -o -type l \) -name 'libusbip.so*' \
-            -exec cp -a {} "${VERSION_ROOT}/" \;
+            -exec cp -a {} "${VERSION_ROOT}/" \; || true
 
-          # Copy ACPI tools under stable package names regardless of their
-          # nested source-tree build directory.
+          # libtool may place the USB/IP shared library in a .libs directory;
+          # discover it explicitly if the versioned filename is not copied above.
+          if ! compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
+            USBIP_LIB="$(find xanmod-linux/tools/usb/usbip -type f -name 'libusbip.so*' -print -quit)"
+            if [ -n "${USBIP_LIB}" ]; then
+              cp -a "${USBIP_LIB}" "${VERSION_ROOT}/"
+            fi
+          fi
+
           for tool in acpidbg acpidump ec pfrut; do
             ACPI_BIN="$(find xanmod-linux/tools/power/acpi -type f -name "${tool}" -perm -111 -print -quit)"
             test -n "${ACPI_BIN}"
@@ -136,8 +139,18 @@ jobs:
           done
 
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
-          patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
-          patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
+
+          if file -b "${VERSION_ROOT}/usbip" | grep -q '^ELF'; then
+            if compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
+              patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
+            fi
+          fi
+
+          if file -b "${VERSION_ROOT}/usbipd" | grep -q '^ELF'; then
+            if compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
+              patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
+            fi
+          fi
 
           find "${VERSION_ROOT}" -maxdepth 1 -type f -exec chmod 0755 {} +
           cp "${VERSION_ROOT}/perf" "output/bin/perf-${XANMOD_KERNEL}-amd64"
