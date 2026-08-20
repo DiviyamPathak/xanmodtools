@@ -80,8 +80,13 @@ jobs:
           ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help \
             >/dev/null 2>&1 || test $? -eq 1
           ./tools/tracing/rtla/rtla --help >/dev/null
-          ./tools/usb/usbip/src/usbip version
-          ./tools/usb/usbip/src/usbipd --version || true
+
+          USBIP_BIN="$(find ./tools/usb/usbip -path '*/.libs/usbip' -type f -perm -111 -print -quit)"
+          USBIPD_BIN="$(find ./tools/usb/usbip -path '*/.libs/usbipd' -type f -perm -111 -print -quit)"
+          test -n "${USBIP_BIN}"
+          test -n "${USBIPD_BIN}"
+          "${USBIP_BIN}" version
+          "${USBIPD_BIN}" --version || true
 
           for tool in acpidbg acpidump ec pfrut; do
             ACPI_BIN="$(find ./tools/power/acpi -type f -name "${tool}" -perm -111 -print -quit)"
@@ -95,10 +100,12 @@ jobs:
           set -euxo pipefail
           VERSION_ROOT="output/tools/${XANMOD_KERNEL}"
           mkdir -p "${VERSION_ROOT}" output/bin
+
           cp xanmod-linux/tools/perf/perf "${VERSION_ROOT}/perf"
           if [ -f xanmod-linux/tools/perf/libperf-jvmti.so ]; then
             cp xanmod-linux/tools/perf/libperf-jvmti.so "${VERSION_ROOT}/libperf-jvmti.so"
           fi
+
           if [ -f xanmod-linux/tools/bpf/bpftool/src/bpftool ]; then
             cp xanmod-linux/tools/bpf/bpftool/src/bpftool "${VERSION_ROOT}/bpftool"
           else
@@ -109,16 +116,28 @@ jobs:
           find xanmod-linux/tools/power/cpupower -maxdepth 3 \
             \( -type f -o -type l \) -name 'libcpupower.so*' \
             -exec cp -a {} "${VERSION_ROOT}/" \;
+
           cp xanmod-linux/tools/power/x86/turbostat/turbostat "${VERSION_ROOT}/turbostat"
           cp xanmod-linux/tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy \
             "${VERSION_ROOT}/x86_energy_perf_policy"
           cp xanmod-linux/tools/tracing/rtla/rtla "${VERSION_ROOT}/rtla"
 
-          cp xanmod-linux/tools/usb/usbip/src/usbip "${VERSION_ROOT}/usbip"
-          cp xanmod-linux/tools/usb/usbip/src/usbipd "${VERSION_ROOT}/usbipd"
-          find xanmod-linux/tools/usb/usbip -maxdepth 6 \
-            \( -type f -o -type l \) -name 'libusbip.so*' \
-            -exec cp -a {} "${VERSION_ROOT}/" \; || true
+          USBIP_BIN="$(find xanmod-linux/tools/usb/usbip -path '*/.libs/usbip' -type f -perm -111 -print -quit)"
+          USBIPD_BIN="$(find xanmod-linux/tools/usb/usbip -path '*/.libs/usbipd' -type f -perm -111 -print -quit)"
+          test -n "${USBIP_BIN}"
+          test -n "${USBIPD_BIN}"
+          cp "${USBIP_BIN}" "${VERSION_ROOT}/usbip"
+          cp "${USBIPD_BIN}" "${VERSION_ROOT}/usbipd"
+
+          USBIP_LIB="$(find xanmod-linux/tools/usb/usbip -path '*/.libs/libusbip.so*' -type f -print -quit)"
+          test -n "${USBIP_LIB}"
+          cp -a "${USBIP_LIB}" "${VERSION_ROOT}/"
+          USBIP_LIB_DIR="$(dirname "${USBIP_LIB}")"
+          for link in libusbip.so libusbip.so.0; do
+            if [ -e "${USBIP_LIB_DIR}/${link}" ] || [ -L "${USBIP_LIB_DIR}/${link}" ]; then
+              cp -a "${USBIP_LIB_DIR}/${link}" "${VERSION_ROOT}/"
+            fi
+          done
 
           for tool in acpidbg acpidump ec pfrut; do
             ACPI_BIN="$(find xanmod-linux/tools/power/acpi -type f -name "${tool}" -perm -111 -print -quit)"
@@ -127,12 +146,8 @@ jobs:
           done
 
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
-          if file -b "${VERSION_ROOT}/usbip" | grep -q '^ELF' && compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
-            patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
-          fi
-          if file -b "${VERSION_ROOT}/usbipd" | grep -q '^ELF' && compgen -G "${VERSION_ROOT}/libusbip.so*" >/dev/null; then
-            patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
-          fi
+          patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
+          patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
 
           find "${VERSION_ROOT}" -maxdepth 1 -type f -exec chmod 0755 {} +
           cp "${VERSION_ROOT}/perf" "output/bin/perf-${XANMOD_KERNEL}-amd64"
@@ -161,12 +176,8 @@ jobs:
           mkdir -p "${PACKAGE_DIR}/DEBIAN" "${VERSION_ROOT}"
           cp -a "${SOURCE_ROOT}/." "${VERSION_ROOT}/"
 
-          # The binaries live under /usr/lib/linux-tools/<kernel>; dpkg-shlibdeps
-          # cannot infer a package context for this custom layout. Determine the
-          # required host packages from ldd and encode them explicitly.
           declare -A RUNTIME_PKGS=()
           mapfile -t BINARIES < <(find "${VERSION_ROOT}" -maxdepth 1 -type f -perm -111 -print)
-
           for binary in "${BINARIES[@]}"; do
             if ! file -b "${binary}" | grep -q '^ELF'; then
               continue
@@ -177,7 +188,6 @@ jobs:
               [ -n "${pkg}" ] && RUNTIME_PKGS["${pkg}"]=1
             done < <(ldd "${binary}" 2>/dev/null | awk '/=> \/.* \(/ {print $3} /^\// {print $1}' | sort -u)
           done
-
           SHLIB_DEPS="$(printf '%s\n' "${!RUNTIME_PKGS[@]}" | sort -u | paste -sd, -)"
 
           {
@@ -201,6 +211,7 @@ jobs:
 
       - name: Inspect Debian package
         run: |
+          set -eux
           dpkg-deb --info "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           dpkg-deb --contents "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
@@ -213,6 +224,7 @@ jobs:
           for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd acpidbg acpidump ec pfrut; do
             test -x "${ROOT}/${tool}"
           done
+
           "${ROOT}/perf" version
           "${ROOT}/bpftool" version
           "${ROOT}/cpupower" --version
@@ -312,7 +324,6 @@ jobs:
             "linux-tools-${XANMOD_KERNEL}" || true
           reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" \
             "output/${CURRENT_DEB}"
-
           gpg --export-options export-minimal --export "${APT_GPG_FINGERPRINT}" \
             > "${APT_REPO}/xanmodtools.gpg"
 
