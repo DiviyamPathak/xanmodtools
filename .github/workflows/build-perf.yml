@@ -2,7 +2,6 @@ name: Build XanMod Linux Tools
 
 on:
   workflow_dispatch:
-
   push:
     tags:
       - "v*"
@@ -27,52 +26,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            git \
-            build-essential \
-            flex \
-            bison \
-            pkg-config \
-            autoconf \
-            automake \
-            libtool \
-            libelf-dev \
-            libdw-dev \
-            libunwind-dev \
-            libslang2-dev \
-            libperl-dev \
-            libpython3-dev \
-            libcap-dev \
-            libnuma-dev \
-            libbabeltrace-dev \
-            libtraceevent-dev \
-            libtracefs-dev \
-            libpfm4-dev \
-            libssl-dev \
-            libzstd-dev \
-            liblzma-dev \
-            libaudit-dev \
-            libdebuginfod-dev \
-            systemtap-sdt-dev \
-            llvm \
-            libcapstone-dev \
-            libpci-dev \
-            libpopt-dev \
-            libudev-dev \
-            libbpf-dev \
-            uuid-dev \
-            clang \
-            python3-docutils \
-            default-jdk \
-            reprepro \
-            gnupg
+            git build-essential flex bison pkg-config \
+            autoconf automake libtool \
+            libelf-dev libdw-dev libunwind-dev libslang2-dev \
+            libperl-dev libpython3-dev libcap-dev libnuma-dev \
+            libbabeltrace-dev libtraceevent-dev libtracefs-dev libpfm4-dev \
+            libssl-dev libzstd-dev liblzma-dev libaudit-dev libdebuginfod-dev \
+            systemtap-sdt-dev llvm libcapstone-dev libpci-dev libpopt-dev \
+            libudev-dev libbpf-dev uuid-dev clang python3-docutils default-jdk \
+            reprepro gnupg patchelf
 
       - name: Clone XanMod source
         run: |
-          git clone \
-            --depth 1 \
-            --branch "${XANMOD_TAG}" \
-            https://gitlab.com/xanmod/linux.git \
-            xanmod-linux
+          git clone --depth 1 --branch "${XANMOD_TAG}" \
+            https://gitlab.com/xanmod/linux.git xanmod-linux
 
       - name: Build kernel userspace tools
         working-directory: xanmod-linux
@@ -85,8 +52,6 @@ jobs:
           make -C tools/power/x86/x86_energy_perf_policy -j"$(nproc)"
           make -C tools/tracing/rtla -j"$(nproc)"
 
-          # USB/IP uses Autotools and does not have a generated Makefile in
-          # the clean kernel source tree.
           cd tools/usb/usbip
           ./autogen.sh
           ./configure --with-tcp-wrappers=no
@@ -100,13 +65,31 @@ jobs:
         run: |
           set -eux
           ./tools/perf/perf version
-          ./tools/bpf/bpftool/src/bpftool version || ./tools/bpf/bpftool/bpftool version
-          ./tools/power/cpupower/cpupower --version || true
+          if [ -x ./tools/bpf/bpftool/src/bpftool ]; then
+            ./tools/bpf/bpftool/src/bpftool version
+          else
+            ./tools/bpf/bpftool/bpftool version
+          fi
+
+          CPUP_POWER_DIR="$(pwd)/tools/power/cpupower"
+          LD_LIBRARY_PATH="${CPUP_POWER_DIR}/lib:${LD_LIBRARY_PATH:-}" \
+            ./tools/power/cpupower/cpupower --version || true
+
           ./tools/power/x86/turbostat/turbostat --version
-          ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help >/dev/null
+
+          # x86_energy_perf_policy prints help but returns 1 for this invocation.
+          ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help >/dev/null 2>&1 || \
+            test $? -eq 1
+
           ./tools/tracing/rtla/rtla --help >/dev/null
           ./tools/usb/usbip/src/usbip --version || true
           ./tools/usb/usbip/src/usbipd --version || true
+
+          # ACPI tools built by `make -C tools acpi`.
+          test -x ./tools/power/acpi/tools/acpidbg/acpidbg
+          test -x ./tools/power/acpi/tools/acpidump/acpidump
+          test -x ./tools/power/acpi/tools/ec/ec
+          test -x ./tools/power/acpi/tools/pfrut/pfrut
 
       - name: Prepare tools tree
         run: |
@@ -121,20 +104,27 @@ jobs:
 
           if [ -f xanmod-linux/tools/bpf/bpftool/src/bpftool ]; then
             cp xanmod-linux/tools/bpf/bpftool/src/bpftool "${VERSION_ROOT}/bpftool"
-          elif [ -f xanmod-linux/tools/bpf/bpftool/bpftool ]; then
-            cp xanmod-linux/tools/bpf/bpftool/bpftool "${VERSION_ROOT}/bpftool"
           else
-            echo "bpftool binary not found"
-            exit 1
+            cp xanmod-linux/tools/bpf/bpftool/bpftool "${VERSION_ROOT}/bpftool"
           fi
 
           cp xanmod-linux/tools/power/cpupower/cpupower "${VERSION_ROOT}/cpupower"
+          find xanmod-linux/tools/power/cpupower -maxdepth 2 -type f -name 'libcpupower.so*' -exec cp -a {} "${VERSION_ROOT}/" \; || true
+
           cp xanmod-linux/tools/power/x86/turbostat/turbostat "${VERSION_ROOT}/turbostat"
           cp xanmod-linux/tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy \
             "${VERSION_ROOT}/x86_energy_perf_policy"
           cp xanmod-linux/tools/tracing/rtla/rtla "${VERSION_ROOT}/rtla"
           cp xanmod-linux/tools/usb/usbip/src/usbip "${VERSION_ROOT}/usbip"
           cp xanmod-linux/tools/usb/usbip/src/usbipd "${VERSION_ROOT}/usbipd"
+
+          cp xanmod-linux/tools/power/acpi/tools/acpidbg/acpidbg "${VERSION_ROOT}/acpidbg"
+          cp xanmod-linux/tools/power/acpi/tools/acpidump/acpidump "${VERSION_ROOT}/acpidump"
+          cp xanmod-linux/tools/power/acpi/tools/ec/ec "${VERSION_ROOT}/ec"
+          cp xanmod-linux/tools/power/acpi/tools/pfrut/pfrut "${VERSION_ROOT}/pfrut"
+
+          # Make cpupower self-contained when installed under /usr/lib/linux-tools/<kernel>/.
+          patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
 
           chmod 0755 "${VERSION_ROOT}"/*
           cp "${VERSION_ROOT}/perf" "output/bin/perf-${XANMOD_KERNEL}-amd64"
@@ -157,7 +147,7 @@ jobs:
           Description: Linux kernel tools for XanMod ${XANMOD_VERSION}
            Version-specific Linux userspace tools built from the matching XanMod kernel source.
            Includes perf, bpftool, cpupower, turbostat, x86_energy_perf_policy,
-           rtla, and USB/IP tools.
+           rtla, USB/IP, and ACPI tools.
           EOF
 
           dpkg-deb --build "${PACKAGE_DIR}" \
@@ -172,15 +162,15 @@ jobs:
         run: |
           set -eux
           sudo dpkg -i "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
-          for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd; do
+          for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd acpidbg acpidump ec pfrut; do
             test -x "/usr/lib/linux-tools/${XANMOD_KERNEL}/${tool}"
           done
           "/usr/lib/linux-tools/${XANMOD_KERNEL}/perf" version
           "/usr/lib/linux-tools/${XANMOD_KERNEL}/bpftool" version
+          "/usr/lib/linux-tools/${XANMOD_KERNEL}/cpupower" --version || true
 
       - name: Test Ubuntu perf dispatcher
-        run: |
-          /usr/bin/perf version
+        run: /usr/bin/perf version
 
       - name: Upload Linux tools binaries
         uses: actions/upload-artifact@v4
@@ -212,7 +202,6 @@ jobs:
             echo "APT_GPG_PRIVATE_KEY_B64 GitHub Actions secret is required."
             exit 1
           fi
-
           export GNUPGHOME="${RUNNER_TEMP}/gnupg"
           mkdir -m 700 -p "${GNUPGHOME}"
           printf '%s' "${APT_GPG_PRIVATE_KEY_B64}" | base64 --decode | gpg --batch --import
@@ -222,10 +211,7 @@ jobs:
         run: |
           set -euo pipefail
           FINGERPRINT="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "fpr" {print $10; exit}')"
-          if [ -z "${FINGERPRINT}" ]; then
-            echo "No secret signing key was imported."
-            exit 1
-          fi
+          test -n "${FINGERPRINT}"
           echo "APT_GPG_FINGERPRINT=${FINGERPRINT}" >> "${GITHUB_ENV}"
 
       - name: Rebuild signed APT repository
@@ -233,7 +219,6 @@ jobs:
           set -euxo pipefail
           APT_REPO="${RUNNER_TEMP}/apt-repo"
           mkdir -p "${APT_REPO}/conf"
-
           cat > "${APT_REPO}/conf/distributions" <<EOF
           Codename: ${APT_CODENAME}
           Suite: ${APT_CODENAME}
@@ -252,12 +237,9 @@ jobs:
 
           reprepro -b "${APT_REPO}" remove "${APT_CODENAME}" \
             "linux-tools-${XANMOD_KERNEL}" || true
-
           reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" \
             "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
-
-          gpg --export-options export-minimal \
-            --export "${APT_GPG_FINGERPRINT}" \
+          gpg --export-options export-minimal --export "${APT_GPG_FINGERPRINT}" \
             > "${APT_REPO}/xanmodtools.gpg"
 
       - name: Validate APT repository
@@ -274,17 +256,14 @@ jobs:
           cp -a "${RUNNER_TEMP}/apt-repo/dists" apt-pages/
           cp -a "${RUNNER_TEMP}/apt-repo/pool" apt-pages/
           cp "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" apt-pages/
-
           cd apt-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dists pool xanmodtools.gpg
-
           if git diff --cached --quiet; then
             echo "No APT repository changes to publish."
             exit 0
           fi
-
           git commit -m "Publish XanMod ${XANMOD_KERNEL} tools"
           git push origin HEAD:gh-pages
 
