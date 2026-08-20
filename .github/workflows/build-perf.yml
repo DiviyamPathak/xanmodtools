@@ -104,7 +104,6 @@ jobs:
           set -euxo pipefail
           VERSION_ROOT="../output/tools/${XANMOD_KERNEL}"
           mkdir -p "${VERSION_ROOT}" ../output/bin
-
           cp tools/perf/perf "${VERSION_ROOT}/perf"
           if [ -f tools/perf/libperf-jvmti.so ]; then
             cp tools/perf/libperf-jvmti.so "${VERSION_ROOT}/libperf-jvmti.so"
@@ -130,7 +129,6 @@ jobs:
           test -n "${USBIP_BIN}"
           test -n "${USBIPD_BIN}"
           test -n "${USBIP_LIB}"
-
           cp "${USBIP_BIN}" "${VERSION_ROOT}/usbip"
           cp "${USBIPD_BIN}" "${VERSION_ROOT}/usbipd"
           cp -a "${USBIP_LIB}" "${VERSION_ROOT}/"
@@ -147,7 +145,6 @@ jobs:
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
-
           find "${VERSION_ROOT}" -maxdepth 1 -type f -exec chmod 0755 {} +
           cp "${VERSION_ROOT}/perf" "../output/bin/perf-${XANMOD_KERNEL}-amd64"
 
@@ -174,10 +171,8 @@ jobs:
           SOURCE_ROOT="output/tools/${XANMOD_KERNEL}"
           mkdir -p "${PACKAGE_DIR}/DEBIAN" "${VERSION_ROOT}"
           cp -a "${SOURCE_ROOT}/." "${VERSION_ROOT}/"
-
           declare -A RUNTIME_PKGS=()
           mapfile -t BINARIES < <(find "${VERSION_ROOT}" -maxdepth 1 -type f -perm -111 -print)
-
           for binary in "${BINARIES[@]}"; do
             if ! file -b "${binary}" | grep -q '^ELF'; then
               continue
@@ -188,9 +183,7 @@ jobs:
               [ -n "${pkg}" ] && RUNTIME_PKGS["${pkg}"]=1
             done < <(ldd "${binary}" 2>/dev/null | awk '/=> \/.* \(/ {print $3} /^\// {print $1}' | sort -u)
           done
-
           SHLIB_DEPS="$(printf '%s\n' "${!RUNTIME_PKGS[@]}" | sort -u | paste -sd, -)"
-
           {
             printf 'Package: linux-tools-%s\n' "${XANMOD_KERNEL}"
             printf 'Version: %s\n' "${PACKAGE_VERSION}"
@@ -206,9 +199,7 @@ jobs:
             printf ' Includes perf, bpftool, cpupower, turbostat, x86_energy_perf_policy,\n'
             printf ' rtla, USB/IP, and ACPI tools.\n'
           } > "${PACKAGE_DIR}/DEBIAN/control"
-
-          dpkg-deb --build "${PACKAGE_DIR}" \
-            "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
+          dpkg-deb --build "${PACKAGE_DIR}" "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
       - name: Inspect Debian package
         run: |
@@ -236,7 +227,6 @@ jobs:
           "${ROOT}/acpidump" --help >/dev/null 2>&1 || true
           "${ROOT}/ec" --help >/dev/null 2>&1 || true
           "${ROOT}/pfrut" --help >/dev/null 2>&1 || true
-
           while IFS= read -r -d '' binary; do
             if file -b "${binary}" | grep -q 'ELF' && ldd "${binary}" 2>/dev/null | grep -q 'not found'; then
               ldd "${binary}" || true
@@ -254,9 +244,7 @@ jobs:
 
       - name: Create tools archive
         run: |
-          tar -C output/tools -czf \
-            "output/linux-tools-${XANMOD_KERNEL}-amd64.tar.gz" \
-            "${XANMOD_KERNEL}"
+          tar -C output/tools -czf "output/linux-tools-${XANMOD_KERNEL}-amd64.tar.gz" "${XANMOD_KERNEL}"
 
       - name: Upload tools archive
         uses: actions/upload-artifact@v4
@@ -287,15 +275,12 @@ jobs:
           test -n "${APT_GPG_PRIVATE_KEY}"
           export GNUPGHOME="${RUNNER_TEMP}/gnupg"
           mkdir -m 700 -p "${GNUPGHOME}"
-
           KEY_FILE="${RUNNER_TEMP}/apt-signing-key"
           printf '%s\n' "${APT_GPG_PRIVATE_KEY}" > "${KEY_FILE}"
-
           IMPORT_OK=0
           if grep -q '^-----BEGIN PGP ' "${KEY_FILE}"; then
-            if gpg --batch --import "${KEY_FILE}"; then
-              IMPORT_OK=1
-            fi
+            gpg --batch --import "${KEY_FILE}"
+            IMPORT_OK=1
           else
             CLEAN_B64="$(tr -d '[:space:]' < "${KEY_FILE}")"
             printf '%s' "${CLEAN_B64}" | base64 --decode -i > "${RUNNER_TEMP}/apt-signing-key.decoded" || true
@@ -304,14 +289,20 @@ jobs:
             fi
             rm -f "${RUNNER_TEMP}/apt-signing-key.decoded"
           fi
-
           rm -f "${KEY_FILE}"
           if [ "${IMPORT_OK}" -ne 1 ] || ! gpg --batch --with-colons --list-secret-keys | grep -q '^sec:'; then
             echo "Failed to import an APT secret signing key."
             exit 1
           fi
-
           echo "GNUPGHOME=${GNUPGHOME}" >> "${GITHUB_ENV}"
+
+      - name: Configure noninteractive GPG
+        run: |
+          set -euo pipefail
+          printf 'pinentry-mode loopback\n' >> "${GNUPGHOME}/gpg.conf"
+          printf 'allow-loopback-pinentry\n' >> "${GNUPGHOME}/gpg-agent.conf"
+          gpgconf --kill gpg-agent || true
+          gpg-connect-agent /bye || true
 
       - name: Resolve APT signing fingerprint
         run: |
@@ -336,29 +327,21 @@ jobs:
             "Description: XanMod kernel-specific Linux tools" \
             "SignWith: ${APT_GPG_FINGERPRINT}" \
             > "${APT_REPO}/conf/distributions"
-
           find apt-pages/pool -type f -name '*.deb' ! -name "${CURRENT_DEB}" -print0 2>/dev/null | \
             while IFS= read -r -d '' pkg; do
               reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"
             done
-
-          reprepro -b "${APT_REPO}" remove "${APT_CODENAME}" \
-            "linux-tools-${XANMOD_KERNEL}" || true
-          reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" \
-            "output/${CURRENT_DEB}"
-
-          gpg --export-options export-minimal --export "${APT_GPG_FINGERPRINT}" \
-            > "${APT_REPO}/xanmodtools.gpg"
+          reprepro -b "${APT_REPO}" remove "${APT_CODENAME}" "linux-tools-${XANMOD_KERNEL}" || true
+          reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "output/${CURRENT_DEB}"
+          gpg --export-options export-minimal --export "${APT_GPG_FINGERPRINT}" > "${APT_REPO}/xanmodtools.gpg"
 
       - name: Validate APT repository
         run: |
           set -eux
           test -s "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/InRelease"
           test -s "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/main/binary-amd64/Packages"
-          gpgv --keyring "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" \
-            "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/InRelease"
-          grep -q "Package: linux-tools-${XANMOD_KERNEL}" \
-            "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/main/binary-amd64/Packages"
+          gpgv --keyring "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/InRelease"
+          grep -q "Package: linux-tools-${XANMOD_KERNEL}" "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/main/binary-amd64/Packages"
 
       - name: Publish APT repository to gh-pages
         run: |
