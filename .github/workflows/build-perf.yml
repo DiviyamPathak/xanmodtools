@@ -85,10 +85,14 @@ jobs:
           ./tools/usb/usbip/src/usbip version
           ./tools/usb/usbip/src/usbipd --version || true
 
-          test -x ./tools/power/acpi/tools/acpidbg/tools/acpidbg/acpidbg
-          test -x ./tools/power/acpi/tools/acpidump/tools/acpidump/acpidump
-          test -x ./tools/power/acpi/tools/ec/tools/ec/ec
-          test -x ./tools/power/acpi/tools/pfrut/tools/pfrut/pfrut
+          # ACPI builds create nested tool directories; discover the actual
+          # executable rather than relying on a kernel-tree-specific path.
+          for tool in acpidbg acpidump ec pfrut; do
+            ACPI_BIN="$(find ./tools/power/acpi -type f -name "${tool}" -perm -111 -print -quit)"
+            test -n "${ACPI_BIN}"
+            test -x "${ACPI_BIN}"
+            echo "Found ${tool}: ${ACPI_BIN}"
+          done
 
       - name: Prepare tools tree
         run: |
@@ -123,10 +127,13 @@ jobs:
             \( -type f -o -type l \) -name 'libusbip.so*' \
             -exec cp -a {} "${VERSION_ROOT}/" \;
 
-          cp xanmod-linux/tools/power/acpi/tools/acpidbg/tools/acpidbg/acpidbg "${VERSION_ROOT}/acpidbg"
-          cp xanmod-linux/tools/power/acpi/tools/acpidump/tools/acpidump/acpidump "${VERSION_ROOT}/acpidump"
-          cp xanmod-linux/tools/power/acpi/tools/ec/tools/ec/ec "${VERSION_ROOT}/ec"
-          cp xanmod-linux/tools/power/acpi/tools/pfrut/tools/pfrut/pfrut "${VERSION_ROOT}/pfrut"
+          # Copy ACPI tools under stable package names regardless of their
+          # nested source-tree build directory.
+          for tool in acpidbg acpidump ec pfrut; do
+            ACPI_BIN="$(find xanmod-linux/tools/power/acpi -type f -name "${tool}" -perm -111 -print -quit)"
+            test -n "${ACPI_BIN}"
+            cp "${ACPI_BIN}" "${VERSION_ROOT}/${tool}"
+          done
 
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
