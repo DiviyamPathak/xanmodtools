@@ -287,7 +287,18 @@ jobs:
           test -n "${APT_GPG_PRIVATE_KEY}"
           export GNUPGHOME="${RUNNER_TEMP}/gnupg"
           mkdir -m 700 -p "${GNUPGHOME}"
-          printf '%s\n' "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
+
+          KEY_FILE="${RUNNER_TEMP}/apt-signing-key"
+          printf '%s\n' "${APT_GPG_PRIVATE_KEY}" > "${KEY_FILE}"
+
+          if grep -q '^-----BEGIN PGP ' "${KEY_FILE}"; then
+            gpg --batch --import "${KEY_FILE}"
+          else
+            CLEAN_B64="$(tr -d '[:space:]' < "${KEY_FILE}")"
+            printf '%s' "${CLEAN_B64}" | base64 --decode | gpg --batch --import
+          fi
+
+          rm -f "${KEY_FILE}"
           echo "GNUPGHOME=${GNUPGHOME}" >> "${GITHUB_ENV}"
 
       - name: Resolve APT signing fingerprint
