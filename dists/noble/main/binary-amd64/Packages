@@ -1,0 +1,14 @@
+Package: linux-tools-7.1.6-x64v3-xanmod1
+Version: 7.1.6-1
+Architecture: amd64
+Maintainer: XanMod Tools Community
+Priority: optional
+Section: devel
+Filename: pool/main/l/linux-tools-7.1.6-x64v3-xanmod1/linux-tools-7.1.6-x64v3-xanmod1_7.1.6-1_amd64.deb
+Size: 3520478
+SHA256: f86ba5c15d6d133a68eee08cc4d05260345374be508ab31acd91fd277df0f53b
+SHA1: 2c352f5d531cf3ae20ed7ab50b1510bad55e5c8c
+MD5sum: 15b964fea60e3e6e02ba4c37c681af89
+Description: Linux performance tools for XanMod 7.1.6
+ Performance tools built from the matching XanMod 7.1.6 kernel source.
+

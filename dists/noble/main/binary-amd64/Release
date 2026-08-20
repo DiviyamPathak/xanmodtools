@@ -1,0 +1,6 @@
+Archive: noble
+Component: main
+Origin: XanMod Tools
+Label: XanMod Tools
+Architecture: amd64
+Description: XanMod kernel-specific Linux tools

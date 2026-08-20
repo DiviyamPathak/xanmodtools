@@ -1,0 +1,39 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: XanMod Tools
+Label: XanMod Tools
+Suite: noble
+Codename: noble
+Date: Thu, 20 Aug 2026 13:44:25 UTC
+Architectures: amd64
+Components: main
+Description: XanMod kernel-specific Linux tools
+MD5Sum:
+ 80ff7c56bfda5567811226164a6ded59 552 main/binary-amd64/Packages
+ a641e759ece422664df137fe8e161c68 366 main/binary-amd64/Packages.gz
+ 8e8968d0ea696a59820d0d4c7f4d7cc5 140 main/binary-amd64/Release
+SHA1:
+ ba77be8d85994b229f707c7e58be340b8c5e5297 552 main/binary-amd64/Packages
+ 25c75f862a5ef187b05c8009953088acb67e0da7 366 main/binary-amd64/Packages.gz
+ e8e22bd0f199f7aed7306a1733ecd5736f0038be 140 main/binary-amd64/Release
+SHA256:
+ 0bb177eda6589f1bf316a23ae80347ffb32fab519a61cc7e0f07ac52135a4f86 552 main/binary-amd64/Packages
+ 4e4ae3a7f8da4437b7d0bdf74a669085da0d65b58ab5508037e4962a9b5c8fbb 366 main/binary-amd64/Packages.gz
+ fdb9177edd4b37ffe220212947fa723077aea084c74963d12316a753f425ac07 140 main/binary-amd64/Release
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEEY9E3DQ1VWJuMxJy6ooXrpFg1qpYFAmqHBM0ACgkQooXrpFg1
+qpYcKhAA0R6u8LfYVQs+o+N7BczlctpjAW/jfqyQOP0RHCdHWUbtpKQqM6Is9B3k
+gcfYTX7FRhROtoteCjKJyd7ujSTcbe/IB9poitsqcJxrFB/x15ILCxH9foi9dzjq
+x5vQ/qSOwNBWOc1XYcR+MYXDF2TRcFQscaGWftLaPaxQejgqpjowUPdFmyy2SxcM
+R3fhGyN5hNfU+N2Nzyi9q5Bx6DOAV7UyWmR16X/Hd1pxloBxBWcbRR8vP7Mgl8n7
+1Uj81KDFrqcKCvUkCaXtNwkyF4R2HfgTegT8FS7qmxUQWEjDa3T5B5jXF8pbfMld
+oRL4zPRjHtLNi7JMFNv+4ViHRl2kJcYjtahrh4BiPlgrRd763kZ8qhdc3sO/iu6D
+puLTEgX04HtJh/Gkyw4XmVQ2xZ6G/ZgR7XOrmu7UKeeS4RFRBxEx9hy51CopOKFP
+AfqjRYbGbi4NLPB4fLH1SVJF1/teQyq4w4E+OyOxQiZ3miA8BKpkkY3hSsDH5I2k
+jwTIion4vuOnBSxRfZ83V1OboRJsX1+ou9RBNNyCG7VmaqeU4QiBNZyY9dFz+PGh
+F7cdOwwNoRFSeLWVEEp5NDLwIeCyk2Wqt5pgHZUoF8uc2LGiM0ppWmmOLV5wpSYh
+As57g0EB7abuvHsw0Uo7CVXkXJ7muKE3KapyvBlbIedo7pV2aag=
+=edxE
+-----END PGP SIGNATURE-----

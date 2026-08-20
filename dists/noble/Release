@@ -1,0 +1,20 @@
+Origin: XanMod Tools
+Label: XanMod Tools
+Suite: noble
+Codename: noble
+Date: Thu, 20 Aug 2026 13:44:25 UTC
+Architectures: amd64
+Components: main
+Description: XanMod kernel-specific Linux tools
+MD5Sum:
+ 80ff7c56bfda5567811226164a6ded59 552 main/binary-amd64/Packages
+ a641e759ece422664df137fe8e161c68 366 main/binary-amd64/Packages.gz
+ 8e8968d0ea696a59820d0d4c7f4d7cc5 140 main/binary-amd64/Release
+SHA1:
+ ba77be8d85994b229f707c7e58be340b8c5e5297 552 main/binary-amd64/Packages
+ 25c75f862a5ef187b05c8009953088acb67e0da7 366 main/binary-amd64/Packages.gz
+ e8e22bd0f199f7aed7306a1733ecd5736f0038be 140 main/binary-amd64/Release
+SHA256:
+ 0bb177eda6589f1bf316a23ae80347ffb32fab519a61cc7e0f07ac52135a4f86 552 main/binary-amd64/Packages
+ 4e4ae3a7f8da4437b7d0bdf74a669085da0d65b58ab5508037e4962a9b5c8fbb 366 main/binary-amd64/Packages.gz
+ fdb9177edd4b37ffe220212947fa723077aea084c74963d12316a753f425ac07 140 main/binary-amd64/Release
