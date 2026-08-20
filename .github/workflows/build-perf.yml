@@ -67,7 +67,6 @@ jobs:
         run: |
           set -eux
           ./tools/perf/perf version
-
           if [ -x ./tools/bpf/bpftool/src/bpftool ]; then
             ./tools/bpf/bpftool/src/bpftool version
           else
@@ -77,11 +76,9 @@ jobs:
           CPUP_POWER_DIR="$(pwd)/tools/power/cpupower"
           LD_LIBRARY_PATH="${CPUP_POWER_DIR}:${LD_LIBRARY_PATH:-}" \
             ./tools/power/cpupower/cpupower --version
-
           ./tools/power/x86/turbostat/turbostat --version
           ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help \
             >/dev/null 2>&1 || test $? -eq 1
-
           ./tools/tracing/rtla/rtla --help >/dev/null
 
           USBIP_BIN="$(find ./tools/usb/usbip -path '*/.libs/usbip' -type f -perm -111 -print -quit)"
@@ -102,10 +99,11 @@ jobs:
           done
 
       - name: Prepare tools tree
+        working-directory: xanmod-linux
         run: |
           set -euxo pipefail
-          VERSION_ROOT="output/tools/${XANMOD_KERNEL}"
-          mkdir -p "${VERSION_ROOT}" output/bin
+          VERSION_ROOT="../output/tools/${XANMOD_KERNEL}"
+          mkdir -p "${VERSION_ROOT}" ../output/bin
 
           cp tools/perf/perf "${VERSION_ROOT}/perf"
           if [ -f tools/perf/libperf-jvmti.so ]; then
@@ -154,7 +152,7 @@ jobs:
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
 
           find "${VERSION_ROOT}" -maxdepth 1 -type f -exec chmod 0755 {} +
-          cp "${VERSION_ROOT}/perf" "output/bin/perf-${XANMOD_KERNEL}-amd64"
+          cp "${VERSION_ROOT}/perf" "../output/bin/perf-${XANMOD_KERNEL}-amd64"
 
       - name: Check runtime dependencies before packaging
         run: |
