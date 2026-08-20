@@ -187,6 +187,7 @@ jobs:
             done < <(ldd "${binary}" 2>/dev/null | awk '/=> \/.* \(/ {print $3} /^\// {print $1}' | sort -u)
           done
           SHLIB_DEPS="$(printf '%s\n' "${!RUNTIME_PKGS[@]}" | sort -u | paste -sd, -)"
+
           {
             printf 'Package: linux-tools-%s\n' "${XANMOD_KERNEL}"
             printf 'Version: %s\n' "${PACKAGE_VERSION}"
@@ -207,7 +208,6 @@ jobs:
 
       - name: Inspect Debian package
         run: |
-          set -eux
           dpkg-deb --info "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           dpkg-deb --contents "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
@@ -301,26 +301,27 @@ jobs:
           echo "GNUPGHOME=${GNUPGHOME}" >> "${GITHUB_ENV}"
 
       - name: Resolve APT signing fingerprint
-        id: apt-key
         run: |
           set -euo pipefail
           FINGERPRINT="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "fpr" {print $10; exit}')"
           test -n "${FINGERPRINT}"
           echo "APT_GPG_FINGERPRINT=${FINGERPRINT}" >> "${GITHUB_ENV}"
-          echo "fingerprint=${FINGERPRINT}" >> "${GITHUB_OUTPUT}"
 
       - name: Configure noninteractive GPG
         run: |
           set -euo pipefail
-          printf 'use-agent\npinentry-mode loopback\n' > "${GNUPGHOME}/gpg.conf"
+          printf 'use-agent\n' > "${GNUPGHOME}/gpg.conf"
           printf 'allow-loopback-pinentry\n' > "${GNUPGHOME}/gpg-agent.conf"
           gpgconf --kill gpg-agent || true
           gpg-connect-agent /bye || true
-          gpg --batch --pinentry-mode loopback --passphrase '' \
-            --local-user "${APT_GPG_FINGERPRINT}" \
-            --armor --detach-sign \
-            --output "${RUNNER_TEMP}/gpg-self-test.asc" \
-            <(printf 'xanmod-tools-signing-test\n')
+          if ! gpg --batch --yes --pinentry-mode loopback --passphrase '' \
+              --local-user "${APT_GPG_FINGERPRINT}" --armor --detach-sign \
+              --output "${RUNNER_TEMP}/gpg-self-test.asc" \
+              <(printf 'xanmod-tools-signing-test\n') 2>/dev/null; then
+            echo "The configured APT signing key is passphrase-protected."
+            echo "GitHub Actions requires a dedicated CI signing key without a passphrase."
+            exit 1
+          fi
           test -s "${RUNNER_TEMP}/gpg-self-test.asc"
           rm -f "${RUNNER_TEMP}/gpg-self-test.asc"
 
@@ -367,7 +368,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dists pool xanmodtools.gpg
-          if git diff --cached --quiet; then echo "No APT repository changes to publish."; exit 0; fi
+          if git diff --cached --quiet; then
+            echo "No APT repository changes to publish."
+            exit 0
+          fi
           git commit -m "Publish XanMod ${XANMOD_KERNEL} tools"
           git push origin HEAD:gh-pages
 
