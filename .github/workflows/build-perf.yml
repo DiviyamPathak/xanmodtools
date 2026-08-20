@@ -1,6 +1,6 @@
 name: Build XanMod Linux Tools
 
-"on":
+on:
   workflow_dispatch:
   push:
     branches:
@@ -336,17 +336,14 @@ EOF
           cp -a "${RUNNER_TEMP}/apt-repo/dists" apt-pages/
           cp -a "${RUNNER_TEMP}/apt-repo/pool" apt-pages/
           cp "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" apt-pages/
-
           cd apt-pages
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dists pool xanmodtools.gpg
-
           if git diff --cached --quiet; then
             echo "No APT repository changes to publish."
             exit 0
           fi
-
           git commit -m "Publish XanMod ${XANMOD_KERNEL} tools"
           git push origin HEAD:gh-pages
 
