@@ -53,10 +53,12 @@ jobs:
           make -C tools/power/x86/turbostat -j"$(nproc)"
           make -C tools/power/x86/x86_energy_perf_policy -j"$(nproc)"
           make -C tools/tracing/rtla -j"$(nproc)"
+
           cd tools/usb/usbip
           ./autogen.sh
           ./configure --with-tcp-wrappers=no
           make -j"$(nproc)"
+
           cd ../../..
           make -C tools acpi -j"$(nproc)"
 
@@ -70,11 +72,15 @@ jobs:
           else
             ./tools/bpf/bpftool/bpftool version
           fi
+
           CPUP_POWER_DIR="$(pwd)/tools/power/cpupower"
-          LD_LIBRARY_PATH="${CPUP_POWER_DIR}:${LD_LIBRARY_PATH:-}" ./tools/power/cpupower/cpupower --version
+          LD_LIBRARY_PATH="${CPUP_POWER_DIR}:${LD_LIBRARY_PATH:-}" \
+            ./tools/power/cpupower/cpupower --version
           ./tools/power/x86/turbostat/turbostat --version
-          ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help >/dev/null 2>&1 || test $? -eq 1
+          ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help \
+            >/dev/null 2>&1 || test $? -eq 1
           ./tools/tracing/rtla/rtla --help >/dev/null
+
           USBIP_BIN="$(find ./tools/usb/usbip -path '*/.libs/usbip' -type f -perm -111 -print -quit)"
           USBIPD_BIN="$(find ./tools/usb/usbip -path '*/.libs/usbipd' -type f -perm -111 -print -quit)"
           USBIP_LIB="$(find ./tools/usb/usbip -type f -name 'libusbip.so.*' -print -quit)"
@@ -84,6 +90,7 @@ jobs:
           USBIP_LIB_DIR="$(dirname "${USBIP_LIB}")"
           LD_LIBRARY_PATH="${USBIP_LIB_DIR}:${LD_LIBRARY_PATH:-}" "${USBIP_BIN}" version
           LD_LIBRARY_PATH="${USBIP_LIB_DIR}:${LD_LIBRARY_PATH:-}" "${USBIPD_BIN}" --version || true
+
           for tool in acpidbg acpidump ec pfrut; do
             ACPI_BIN="$(find ./tools/power/acpi -type f -name "${tool}" -perm -111 -print -quit)"
             test -n "${ACPI_BIN}"
@@ -97,31 +104,49 @@ jobs:
           set -euxo pipefail
           VERSION_ROOT="../output/tools/${XANMOD_KERNEL}"
           mkdir -p "${VERSION_ROOT}" ../output/bin
+
           cp tools/perf/perf "${VERSION_ROOT}/perf"
-          if [ -f tools/perf/libperf-jvmti.so ]; then cp tools/perf/libperf-jvmti.so "${VERSION_ROOT}/libperf-jvmti.so"; fi
-          if [ -f tools/bpf/bpftool/src/bpftool ]; then cp tools/bpf/bpftool/src/bpftool "${VERSION_ROOT}/bpftool"; else cp tools/bpf/bpftool/bpftool "${VERSION_ROOT}/bpftool"; fi
+          if [ -f tools/perf/libperf-jvmti.so ]; then
+            cp tools/perf/libperf-jvmti.so "${VERSION_ROOT}/libperf-jvmti.so"
+          fi
+          if [ -f tools/bpf/bpftool/src/bpftool ]; then
+            cp tools/bpf/bpftool/src/bpftool "${VERSION_ROOT}/bpftool"
+          else
+            cp tools/bpf/bpftool/bpftool "${VERSION_ROOT}/bpftool"
+          fi
+
           cp tools/power/cpupower/cpupower "${VERSION_ROOT}/cpupower"
-          find tools/power/cpupower -maxdepth 3 \( -type f -o -type l \) -name 'libcpupower.so*' -exec cp -a {} "${VERSION_ROOT}/" \;
+          find tools/power/cpupower -maxdepth 3 \
+            \( -type f -o -type l \) -name 'libcpupower.so*' \
+            -exec cp -a {} "${VERSION_ROOT}/" \;
           cp tools/power/x86/turbostat/turbostat "${VERSION_ROOT}/turbostat"
-          cp tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy "${VERSION_ROOT}/x86_energy_perf_policy"
+          cp tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy \
+            "${VERSION_ROOT}/x86_energy_perf_policy"
           cp tools/tracing/rtla/rtla "${VERSION_ROOT}/rtla"
+
           USBIP_BIN="$(find tools/usb/usbip -path '*/.libs/usbip' -type f -perm -111 -print -quit)"
           USBIPD_BIN="$(find tools/usb/usbip -path '*/.libs/usbipd' -type f -perm -111 -print -quit)"
           USBIP_LIB="$(find tools/usb/usbip -type f -name 'libusbip.so.*' -print -quit)"
-          test -n "${USBIP_BIN}"; test -n "${USBIPD_BIN}"; test -n "${USBIP_LIB}"
+          test -n "${USBIP_BIN}"
+          test -n "${USBIPD_BIN}"
+          test -n "${USBIP_LIB}"
           cp "${USBIP_BIN}" "${VERSION_ROOT}/usbip"
           cp "${USBIPD_BIN}" "${VERSION_ROOT}/usbipd"
           cp -a "${USBIP_LIB}" "${VERSION_ROOT}/"
           USBIP_LIB_DIR="$(dirname "${USBIP_LIB}")"
-          find "${USBIP_LIB_DIR}" -maxdepth 1 -type l -name 'libusbip.so*' -exec cp -a {} "${VERSION_ROOT}/" \; || true
+          find "${USBIP_LIB_DIR}" -maxdepth 1 -type l -name 'libusbip.so*' \
+            -exec cp -a {} "${VERSION_ROOT}/" \; || true
+
           for tool in acpidbg acpidump ec pfrut; do
             ACPI_BIN="$(find tools/power/acpi -type f -name "${tool}" -perm -111 -print -quit)"
             test -n "${ACPI_BIN}"
             cp "${ACPI_BIN}" "${VERSION_ROOT}/${tool}"
           done
+
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/cpupower"
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbip"
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
+
           find "${VERSION_ROOT}" -maxdepth 1 -type f -exec chmod 0755 {} +
           cp "${VERSION_ROOT}/perf" "../output/bin/perf-${XANMOD_KERNEL}-amd64"
 
@@ -148,10 +173,13 @@ jobs:
           SOURCE_ROOT="output/tools/${XANMOD_KERNEL}"
           mkdir -p "${PACKAGE_DIR}/DEBIAN" "${VERSION_ROOT}"
           cp -a "${SOURCE_ROOT}/." "${VERSION_ROOT}/"
+
           declare -A RUNTIME_PKGS=()
           mapfile -t BINARIES < <(find "${VERSION_ROOT}" -maxdepth 1 -type f -perm -111 -print)
           for binary in "${BINARIES[@]}"; do
-            if ! file -b "${binary}" | grep -q '^ELF'; then continue; fi
+            if ! file -b "${binary}" | grep -q '^ELF'; then
+              continue
+            fi
             while read -r libpath; do
               [ -n "${libpath}" ] || continue
               pkg="$(dpkg-query -S "${libpath}" 2>/dev/null | head -n1 | cut -d: -f1 || true)"
@@ -162,18 +190,24 @@ jobs:
           {
             printf 'Package: linux-tools-%s\n' "${XANMOD_KERNEL}"
             printf 'Version: %s\n' "${PACKAGE_VERSION}"
-            printf 'Section: devel\nPriority: optional\nArchitecture: amd64\n'
+            printf 'Section: devel\n'
+            printf 'Priority: optional\n'
+            printf 'Architecture: amd64\n'
             printf 'Maintainer: XanMod Tools Community\n'
-            if [ -n "${SHLIB_DEPS}" ]; then printf 'Depends: %s\n' "${SHLIB_DEPS}"; fi
+            if [ -n "${SHLIB_DEPS}" ]; then
+              printf 'Depends: %s\n' "${SHLIB_DEPS}"
+            fi
             printf 'Description: Linux kernel tools for XanMod %s\n' "${XANMOD_VERSION}"
             printf ' Version-specific Linux userspace tools built from the matching XanMod kernel source.\n'
             printf ' Includes perf, bpftool, cpupower, turbostat, x86_energy_perf_policy,\n'
             printf ' rtla, USB/IP, and ACPI tools.\n'
           } > "${PACKAGE_DIR}/DEBIAN/control"
-          dpkg-deb --build "${PACKAGE_DIR}" "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
+          dpkg-deb --build "${PACKAGE_DIR}" \
+            "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
       - name: Inspect Debian package
         run: |
+          set -eux
           dpkg-deb --info "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           dpkg-deb --contents "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
@@ -183,7 +217,9 @@ jobs:
           DEB="output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           sudo dpkg -i "${DEB}"
           ROOT="/usr/lib/linux-tools/${XANMOD_KERNEL}"
-          for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd acpidbg acpidump ec pfrut; do test -x "${ROOT}/${tool}"; done
+          for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd acpidbg acpidump ec pfrut; do
+            test -x "${ROOT}/${tool}"
+          done
           "${ROOT}/perf" version
           "${ROOT}/bpftool" version
           "${ROOT}/cpupower" --version
@@ -213,7 +249,9 @@ jobs:
 
       - name: Create tools archive
         run: |
-          tar -C output/tools -czf "output/linux-tools-${XANMOD_KERNEL}-amd64.tar.gz" "${XANMOD_KERNEL}"
+          tar -C output/tools -czf \
+            "output/linux-tools-${XANMOD_KERNEL}-amd64.tar.gz" \
+            "${XANMOD_KERNEL}"
 
       - name: Upload tools archive
         uses: actions/upload-artifact@v4
@@ -262,6 +300,15 @@ jobs:
           fi
           echo "GNUPGHOME=${GNUPGHOME}" >> "${GITHUB_ENV}"
 
+      - name: Resolve APT signing fingerprint
+        id: apt-key
+        run: |
+          set -euo pipefail
+          FINGERPRINT="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "fpr" {print $10; exit}')"
+          test -n "${FINGERPRINT}"
+          echo "APT_GPG_FINGERPRINT=${FINGERPRINT}" >> "${GITHUB_ENV}"
+          echo "fingerprint=${FINGERPRINT}" >> "${GITHUB_OUTPUT}"
+
       - name: Configure noninteractive GPG
         run: |
           set -euo pipefail
@@ -269,16 +316,13 @@ jobs:
           printf 'allow-loopback-pinentry\n' > "${GNUPGHOME}/gpg-agent.conf"
           gpgconf --kill gpg-agent || true
           gpg-connect-agent /bye || true
-          gpg --batch --pinentry-mode loopback --passphrase '' --local-user "${APT_GPG_FINGERPRINT:-}" --armor --detach-sign --output "${RUNNER_TEMP}/gpg-self-test.asc" <(printf 'xanmod-tools-signing-test\n')
+          gpg --batch --pinentry-mode loopback --passphrase '' \
+            --local-user "${APT_GPG_FINGERPRINT}" \
+            --armor --detach-sign \
+            --output "${RUNNER_TEMP}/gpg-self-test.asc" \
+            <(printf 'xanmod-tools-signing-test\n')
           test -s "${RUNNER_TEMP}/gpg-self-test.asc"
           rm -f "${RUNNER_TEMP}/gpg-self-test.asc"
-
-      - name: Resolve APT signing fingerprint
-        run: |
-          set -euo pipefail
-          FINGERPRINT="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "fpr" {print $10; exit}')"
-          test -n "${FINGERPRINT}"
-          echo "APT_GPG_FINGERPRINT=${FINGERPRINT}" >> "${GITHUB_ENV}"
 
       - name: Rebuild signed APT repository
         run: |
@@ -296,7 +340,10 @@ jobs:
             "Description: XanMod kernel-specific Linux tools" \
             "SignWith: ${APT_GPG_FINGERPRINT}" \
             > "${APT_REPO}/conf/distributions"
-          find apt-pages/pool -type f -name '*.deb' ! -name "${CURRENT_DEB}" -print0 2>/dev/null | while IFS= read -r -d '' pkg; do reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"; done
+          find apt-pages/pool -type f -name '*.deb' ! -name "${CURRENT_DEB}" -print0 2>/dev/null | \
+            while IFS= read -r -d '' pkg; do
+              reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"
+            done
           reprepro -b "${APT_REPO}" remove "${APT_CODENAME}" "linux-tools-${XANMOD_KERNEL}" || true
           reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "output/${CURRENT_DEB}"
           reprepro -b "${APT_REPO}" export
