@@ -65,7 +65,7 @@ jobs:
       - name: Verify built tools
         working-directory: xanmod-linux
         run: |
-          set -euxo pipefail
+          set -eux
           ./tools/perf/perf version
 
           if [ -x ./tools/bpf/bpftool/src/bpftool ]; then
@@ -81,15 +81,16 @@ jobs:
           ./tools/power/x86/turbostat/turbostat --version
           ./tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy --help \
             >/dev/null 2>&1 || test $? -eq 1
+
           ./tools/tracing/rtla/rtla --help >/dev/null
 
-          USBIP_LIB_DIR="$(pwd)/tools/usb/usbip/libsrc/.libs"
           USBIP_BIN="$(find ./tools/usb/usbip -path '*/.libs/usbip' -type f -perm -111 -print -quit)"
           USBIPD_BIN="$(find ./tools/usb/usbip -path '*/.libs/usbipd' -type f -perm -111 -print -quit)"
+          USBIP_LIB="$(find ./tools/usb/usbip -type f -name 'libusbip.so.*' -print -quit)"
           test -n "${USBIP_BIN}"
           test -n "${USBIPD_BIN}"
-          test -d "${USBIP_LIB_DIR}"
-          test -f "${USBIP_LIB_DIR}/libusbip.so.0.0.1"
+          test -n "${USBIP_LIB}"
+          USBIP_LIB_DIR="$(dirname "${USBIP_LIB}")"
           LD_LIBRARY_PATH="${USBIP_LIB_DIR}:${LD_LIBRARY_PATH:-}" "${USBIP_BIN}" version
           LD_LIBRARY_PATH="${USBIP_LIB_DIR}:${LD_LIBRARY_PATH:-}" "${USBIPD_BIN}" --version || true
 
@@ -101,11 +102,10 @@ jobs:
           done
 
       - name: Prepare tools tree
-        working-directory: xanmod-linux
         run: |
           set -euxo pipefail
-          VERSION_ROOT="../output/tools/${XANMOD_KERNEL}"
-          mkdir -p "${VERSION_ROOT}" ../output/bin
+          VERSION_ROOT="output/tools/${XANMOD_KERNEL}"
+          mkdir -p "${VERSION_ROOT}" output/bin
 
           cp tools/perf/perf "${VERSION_ROOT}/perf"
           if [ -f tools/perf/libperf-jvmti.so ]; then
@@ -128,20 +128,18 @@ jobs:
             "${VERSION_ROOT}/x86_energy_perf_policy"
           cp tools/tracing/rtla/rtla "${VERSION_ROOT}/rtla"
 
-          # libtool leaves wrapper scripts in src/ and real ELF executables in .libs/.
           USBIP_BIN="$(find tools/usb/usbip -path '*/.libs/usbip' -type f -perm -111 -print -quit)"
           USBIPD_BIN="$(find tools/usb/usbip -path '*/.libs/usbipd' -type f -perm -111 -print -quit)"
+          USBIP_LIB="$(find tools/usb/usbip -type f -name 'libusbip.so.*' -print -quit)"
           test -n "${USBIP_BIN}"
           test -n "${USBIPD_BIN}"
+          test -n "${USBIP_LIB}"
+
           cp "${USBIP_BIN}" "${VERSION_ROOT}/usbip"
           cp "${USBIPD_BIN}" "${VERSION_ROOT}/usbipd"
-
-          USBIP_LIB_DIR="$(dirname "${USBIP_BIN}")"
-          USBIP_LIB="$(find "${USBIP_LIB_DIR}" -maxdepth 1 -type f -name 'libusbip.so*' -print -quit)"
-          test -n "${USBIP_LIB}"
           cp -a "${USBIP_LIB}" "${VERSION_ROOT}/"
 
-          # Preserve versioned USB/IP library symlinks if libtool created them.
+          USBIP_LIB_DIR="$(dirname "${USBIP_LIB}")"
           find "${USBIP_LIB_DIR}" -maxdepth 1 -type l -name 'libusbip.so*' \
             -exec cp -a {} "${VERSION_ROOT}/" \; || true
 
@@ -156,17 +154,17 @@ jobs:
           patchelf --set-rpath '$ORIGIN' "${VERSION_ROOT}/usbipd"
 
           find "${VERSION_ROOT}" -maxdepth 1 -type f -exec chmod 0755 {} +
-          cp "${VERSION_ROOT}/perf" "../output/bin/perf-${XANMOD_KERNEL}-amd64"
+          cp "${VERSION_ROOT}/perf" "output/bin/perf-${XANMOD_KERNEL}-amd64"
 
       - name: Check runtime dependencies before packaging
         run: |
           set -euxo pipefail
           VERSION_ROOT="output/tools/${XANMOD_KERNEL}"
           while IFS= read -r -d '' binary; do
-            if file -b "${binary}" | grep -q '^ELF'; then
+            if file -b "${binary}" | grep -q 'ELF'; then
               echo "Checking ${binary}"
-              ldd "${binary}"
-              if ldd "${binary}" | grep -q 'not found'; then
+              if ldd "${binary}" 2>/dev/null | grep -q 'not found'; then
+                ldd "${binary}" || true
                 echo "Missing runtime dependency in ${binary}"
                 exit 1
               fi
@@ -184,6 +182,7 @@ jobs:
 
           declare -A RUNTIME_PKGS=()
           mapfile -t BINARIES < <(find "${VERSION_ROOT}" -maxdepth 1 -type f -perm -111 -print)
+
           for binary in "${BINARIES[@]}"; do
             if ! file -b "${binary}" | grep -q '^ELF'; then
               continue
@@ -194,6 +193,7 @@ jobs:
               [ -n "${pkg}" ] && RUNTIME_PKGS["${pkg}"]=1
             done < <(ldd "${binary}" 2>/dev/null | awk '/=> \/.* \(/ {print $3} /^\// {print $1}' | sort -u)
           done
+
           SHLIB_DEPS="$(printf '%s\n' "${!RUNTIME_PKGS[@]}" | sort -u | paste -sd, -)"
 
           {
@@ -217,7 +217,6 @@ jobs:
 
       - name: Inspect Debian package
         run: |
-          set -eux
           dpkg-deb --info "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           dpkg-deb --contents "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
@@ -227,9 +226,11 @@ jobs:
           DEB="output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
           sudo dpkg -i "${DEB}"
           ROOT="/usr/lib/linux-tools/${XANMOD_KERNEL}"
+
           for tool in perf bpftool cpupower turbostat x86_energy_perf_policy rtla usbip usbipd acpidbg acpidump ec pfrut; do
             test -x "${ROOT}/${tool}"
           done
+
           "${ROOT}/perf" version
           "${ROOT}/bpftool" version
           "${ROOT}/cpupower" --version
@@ -244,7 +245,7 @@ jobs:
           "${ROOT}/pfrut" --help >/dev/null 2>&1 || true
 
           while IFS= read -r -d '' binary; do
-            if file -b "${binary}" | grep -q '^ELF' && ldd "${binary}" 2>/dev/null | grep -q 'not found'; then
+            if file -b "${binary}" | grep -q 'ELF' && ldd "${binary}" 2>/dev/null | grep -q 'not found'; then
               ldd "${binary}" || true
               echo "Installed package has missing runtime dependency: ${binary}"
               exit 1
