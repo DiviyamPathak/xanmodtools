@@ -3,7 +3,6 @@ name: Build XanMod perf
 on:
   workflow_dispatch:
 
-  # Optional: automatically build when you create a release tag
   push:
     tags:
       - "v*"
@@ -11,21 +10,22 @@ on:
 permissions:
   contents: write
 
+env:
+  XANMOD_VERSION: "7.1.6"
+  XANMOD_TAG: "7.1.6-xanmod1"
+  XANMOD_KERNEL: "7.1.6-x64v3-xanmod1"
+  PACKAGE_VERSION: "7.1.6-1"
+  APT_CODENAME: "noble"
+  APT_COMPONENT: "main"
+
 jobs:
   build-perf:
     runs-on: ubuntu-24.04
-
-    env:
-      XANMOD_VERSION: "7.1.6"
-      XANMOD_TAG: "7.1.6-xanmod1"
-      XANMOD_KERNEL: "7.1.6-x64v3-xanmod1"
-      PACKAGE_VERSION: "7.1.6-1"
 
     steps:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-
           sudo apt-get install -y \
             git \
             build-essential \
@@ -51,7 +51,9 @@ jobs:
             libdebuginfod-dev \
             systemtap-sdt-dev \
             llvm \
-            libcapstone-dev
+            libcapstone-dev \
+            reprepro \
+            gnupg
 
       - name: Clone XanMod source
         run: |
@@ -75,13 +77,9 @@ jobs:
       - name: Prepare raw binary
         run: |
           mkdir -p output/bin
-
-          cp \
-            xanmod-linux/tools/perf/perf \
+          cp xanmod-linux/tools/perf/perf \
             "output/bin/perf-${XANMOD_KERNEL}-amd64"
-
-          chmod 755 \
-            "output/bin/perf-${XANMOD_KERNEL}-amd64"
+          chmod 755 "output/bin/perf-${XANMOD_KERNEL}-amd64"
 
       - name: Prepare Debian package
         run: |
@@ -102,15 +100,11 @@ jobs:
            Performance analysis tools built from the matching XanMod kernel source.
           EOF
 
-          cp \
-            "xanmod-linux/tools/perf/perf" \
+          cp xanmod-linux/tools/perf/perf \
             "${PACKAGE_DIR}/usr/lib/linux-tools/${XANMOD_KERNEL}/perf"
+          chmod 755 "${PACKAGE_DIR}/usr/lib/linux-tools/${XANMOD_KERNEL}/perf"
 
-          chmod 755 \
-            "${PACKAGE_DIR}/usr/lib/linux-tools/${XANMOD_KERNEL}/perf"
-
-          dpkg-deb \
-            --build \
+          dpkg-deb --build \
             "${PACKAGE_DIR}" \
             "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
@@ -118,7 +112,6 @@ jobs:
         run: |
           dpkg-deb --info \
             "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
-
           dpkg-deb --contents \
             "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
 
@@ -126,10 +119,7 @@ jobs:
         run: |
           sudo dpkg -i \
             "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
-
-          test -x \
-            "/usr/lib/linux-tools/${XANMOD_KERNEL}/perf"
-
+          test -x "/usr/lib/linux-tools/${XANMOD_KERNEL}/perf"
           "/usr/lib/linux-tools/${XANMOD_KERNEL}/perf" version
 
       - name: Test Ubuntu perf dispatcher
@@ -151,6 +141,90 @@ jobs:
           name: linux-tools-${{ env.XANMOD_KERNEL }}-deb
           path: output/linux-tools-${{ env.XANMOD_KERNEL }}_${{ env.PACKAGE_VERSION }}_amd64.deb
           if-no-files-found: error
+
+      - name: Checkout APT repository branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: apt-pages
+          fetch-depth: 1
+
+      - name: Import APT signing key
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "${APT_GPG_PRIVATE_KEY}" ]; then
+            echo "APT_GPG_PRIVATE_KEY GitHub Actions secret is required."
+            exit 1
+          fi
+
+          export GNUPGHOME="${RUNNER_TEMP}/gnupg"
+          mkdir -m 700 -p "${GNUPGHOME}"
+          printf '%s\n' "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
+          echo "GNUPGHOME=${GNUPGHOME}" >> "${GITHUB_ENV}"
+
+      - name: Rebuild signed APT repository
+        run: |
+          APT_REPO="${RUNNER_TEMP}/apt-repo"
+          mkdir -p "${APT_REPO}/conf"
+
+          cat > "${APT_REPO}/conf/distributions" <<EOF
+          Codename: ${APT_CODENAME}
+          Suite: ${APT_CODENAME}
+          Architectures: amd64
+          Components: ${APT_COMPONENT}
+          Origin: XanMod Tools
+          Label: XanMod Tools
+          Description: XanMod kernel-specific Linux tools
+          SignWith: ${APT_GPG_FINGERPRINT}
+          EOF
+
+          # Re-import all previously published packages so older kernel-specific
+          # tools remain available when the repository is regenerated.
+          find apt-pages/pool -type f -name '*.deb' -print0 2>/dev/null | \
+            while IFS= read -r -d '' pkg; do
+              reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" "${pkg}"
+            done
+
+          # Replace the current package when rebuilding the same kernel release.
+          reprepro -b "${APT_REPO}" remove "${APT_CODENAME}" \
+            "linux-tools-${XANMOD_KERNEL}" || true
+
+          reprepro -b "${APT_REPO}" includedeb "${APT_CODENAME}" \
+            "output/linux-tools-${XANMOD_KERNEL}_${PACKAGE_VERSION}_amd64.deb"
+
+          # Publish the public key generated from the signing key.
+          gpg --export-options export-minimal \
+            --export "${APT_GPG_FINGERPRINT}" \
+            > "${APT_REPO}/xanmodtools.gpg"
+
+      - name: Validate APT repository
+        run: |
+          test -s "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/InRelease"
+          test -s "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/main/binary-amd64/Packages"
+          gpgv \
+            --keyring "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" \
+            "${RUNNER_TEMP}/apt-repo/dists/${APT_CODENAME}/InRelease"
+
+      - name: Publish APT repository to gh-pages
+        run: |
+          rm -rf apt-pages/dists apt-pages/pool
+          cp -a "${RUNNER_TEMP}/apt-repo/dists" apt-pages/
+          cp -a "${RUNNER_TEMP}/apt-repo/pool" apt-pages/
+          cp "${RUNNER_TEMP}/apt-repo/xanmodtools.gpg" apt-pages/
+
+          cd apt-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dists pool xanmodtools.gpg
+
+          if git diff --cached --quiet; then
+            echo "No APT repository changes to publish."
+            exit 0
+          fi
+
+          git commit -m "Publish XanMod ${XANMOD_KERNEL} tools"
+          git push origin HEAD:gh-pages
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
